@@ -106,9 +106,3 @@ insert into character_appears_in (character_id, appears_in) values
 -- Things
 insert into thing (id, type) values
     ('2D1EBC5B7D2741979CF0E84451C5BBB1', 'Thing1');
-
--- Embedded stuff
-insert into test_entity(first_part, second_part, some_value) values
-	(1, 2, 'one then two'),
-	(2, 1, 'two then one'),
-	(1, 1, 'one then one');
