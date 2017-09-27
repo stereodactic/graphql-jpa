@@ -1,6 +1,7 @@
 package org.crygier.graphql;
 
 import graphql.Scalars;
+import graphql.language.FieldDefinition;
 import graphql.schema.GraphQLArgument;
 import graphql.schema.GraphQLEnumType;
 import graphql.schema.GraphQLFieldDefinition;
@@ -40,6 +41,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.persistence.criteria.JoinType;
+import javax.persistence.metamodel.EmbeddableType;
 
 public class GraphQLSchemaBuilder {
 
@@ -136,22 +138,34 @@ public class GraphQLSchemaBuilder {
 
             // Get the fields that can be queried on (i.e. Simple Types, no Sub-Objects)
             if (attribute instanceof SingularAttribute && attribute.getPersistentAttributeType() != Attribute.PersistentAttributeType.BASIC) {
-                EntityType foreignType = (EntityType) ((SingularAttribute) attribute).getType();
-                Stream<Attribute> attributes = findBasicAttributes(foreignType.getAttributes());
+				
+				if (((SingularAttribute) attribute).getType() instanceof EntityType) {
+					EntityType foreignType = (EntityType) ((SingularAttribute) attribute).getType();
+					Stream<Attribute> attributes = findBasicAttributes(foreignType.getAttributes());
 
-                attributes.forEach(it -> {
-                    arguments.add(getArgument(it));
-                });
-			
-				//To do this, the id of the parent would have to be taken into account here so that it actually queries based upon the parent
-				//relationship.  This still retains the n+1 problem though
-				return GraphQLFieldDefinition.newFieldDefinition()
-						.name(attribute.getName())
-						.description(getSchemaDocumentation(attribute.getJavaMember()))
-						.type((GraphQLOutputType) type)
-						.dataFetcher(new JpaDataFetcher(entityManager, foreignType))
-						.argument(arguments)
-						.build();
+					attributes.forEach(it -> {
+						arguments.add(getArgument(it));
+					});
+
+					//To do this, the id of the parent would have to be taken into account here so that it actually queries based upon the parent
+					//relationship.  This still retains the n+1 problem though
+					return GraphQLFieldDefinition.newFieldDefinition()
+							.name(attribute.getName())
+							.description(getSchemaDocumentation(attribute.getJavaMember()))
+							.type((GraphQLOutputType) type)
+							.dataFetcher(new JpaDataFetcher(entityManager, foreignType))
+							.argument(arguments)
+							.build();
+				} else if (((SingularAttribute) attribute).getType() instanceof EmbeddableType) {
+					
+					//this will currently prevent querying on embeddable ids
+					return GraphQLFieldDefinition.newFieldDefinition()
+							.name(attribute.getName())
+							.description(getSchemaDocumentation(attribute.getJavaMember()))
+							.type((GraphQLOutputType) type)
+							.argument(arguments)
+							.build();
+				}
 				
             } else if (attribute instanceof PluralAttribute) {
 								
@@ -230,7 +244,10 @@ public class GraphQLSchemaBuilder {
         } else if (attribute.getPersistentAttributeType() == Attribute.PersistentAttributeType.ELEMENT_COLLECTION) {
             Type foreignType = ((PluralAttribute) attribute).getElementType();
             return new GraphQLList(getTypeFromJavaType(foreignType.getJavaType()));
-        }
+        } else if (attribute.getPersistentAttributeType() == Attribute.PersistentAttributeType.EMBEDDED) {
+			EmbeddableType foreignType = (EmbeddableType)((SingularAttribute) attribute).getType();
+			return getEmbeddedTypeFromJavaType(foreignType.getJavaType());
+		}
 
         final String declaringType = attribute.getDeclaringType().getJavaType().getName(); // fully qualified name of the entity class
         final String declaringMember = attribute.getJavaMember().getName(); // field name in the entity class
@@ -298,9 +315,32 @@ public class GraphQLSchemaBuilder {
             classCache.put(clazz, answer);
 
             return answer;
-        }
+        } 
 
         return null;
+    }
+
+    private GraphQLType getEmbeddedTypeFromJavaType(Class clazz) {
+		if (classCache.containsKey(clazz))
+			return classCache.get(clazz);
+
+		GraphQLObjectType.Builder object = GraphQLObjectType.newObject().name(clazz.getSimpleName());
+
+		for (Field field : clazz.getDeclaredFields()) {
+			object.field(
+					GraphQLFieldDefinition.newFieldDefinition()
+						.name(field.getName())
+						.type(Scalars.GraphQLInt) //temporary hack
+						.build()
+			);
+		}
+
+		GraphQLObjectType answer = object.build();
+		//setIdentityCoercing(answer); //is this really necessary for an embedded type?
+
+		classCache.put(clazz, answer);
+
+		return answer;
     }
 
     /**
