@@ -9,13 +9,13 @@ insert into character (id, name, primary_function, dtype) values
     ('2001', 'R2-D2', 'Astromech', 'Droid');
 
 -- Insert Humans
-insert into character (id, name, home_planet, favorite_droid_id, dtype, gender_code_id) values
-    ('1000', 'Luke Skywalker', 'Tatooine', '2000', 'Human', 0),
-    ('1001', 'Darth Vader', 'Tatooine', '2001', 'Human', 0),
-    ('1002', 'Han Solo', NULL, NULL, 'Human', 0),
-    ('1003', 'Leia Organa', 'Alderaan', 2000, 'Human', 1),
-    ('1004', 'Wilhuff Tarkin', NULL, NULL, 'Human', 0),
-	('1005', 'Darth Maul', NULL, NULL, 'Human', 0);
+insert into character (id, name, home_planet, favorite_droid_id, dtype, gender_code_id, father_id) values
+    ('1001', 'Darth Vader', 'Tatooine', '2001', 'Human', 0, null),
+    ('1000', 'Luke Skywalker', 'Tatooine', '2000', 'Human', 0, 1001),
+    ('1002', 'Han Solo', NULL, NULL, 'Human', 0, null),
+    ('1003', 'Leia Organa', 'Alderaan', 2000, 'Human', 1, 1001),
+    ('1004', 'Wilhuff Tarkin', NULL, NULL, 'Human', 0, null),
+	('1005', 'Darth Maul', NULL, NULL, 'Human', 0, null);
 
 -- Luke's friends
 insert into character_friends (source_id, friend_id) values

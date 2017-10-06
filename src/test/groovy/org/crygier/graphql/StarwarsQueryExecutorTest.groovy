@@ -97,14 +97,14 @@ class StarwarsQueryExecutorTest extends Specification {
                 name
                 homePlanet
                 friends {
-                    name
+                    name (orderBy: ASC)
                 }
             }
         }
         '''
         def expected = [
                 Human: [
-                        [name: 'Luke Skywalker', homePlanet: 'Tatooine', friends: [[name: 'C-3PO'], [name: 'Leia Organa'], [name: 'Han Solo'], [name: 'R2-D2']]]
+                        [name: 'Luke Skywalker', homePlanet: 'Tatooine', friends: [[name: 'C-3PO'], [name: 'Han Solo'], [name: 'Leia Organa'], [name: 'R2-D2']]]
                 ]
         ]
 
@@ -205,10 +205,10 @@ class StarwarsQueryExecutorTest extends Specification {
             Droid(id: "2001") {
                 name
                 friends {
-                    name
+                    name (orderBy: ASC)
                     appearsIn
                     friends {
-                        name
+                        name (orderBy: ASC)
                     }
                 }
             }
@@ -219,9 +219,9 @@ class StarwarsQueryExecutorTest extends Specification {
                         [
                                 name:'R2-D2',
                                 friends:[
-                                        [ name:'Luke Skywalker', appearsIn:['A_NEW_HOPE', 'EMPIRE_STRIKES_BACK', 'RETURN_OF_THE_JEDI', 'THE_FORCE_AWAKENS'], friends:[[name:'C-3PO'], [name:'Leia Organa'], ['name:Han Solo'], [name:'R2-D2']]],
                                         [ name:'Han Solo', appearsIn:['A_NEW_HOPE', 'EMPIRE_STRIKES_BACK', 'RETURN_OF_THE_JEDI', 'THE_FORCE_AWAKENS'], friends:[[name:'Leia Organa'], [name:'Luke Skywalker'], [name:'R2-D2']]],
-                                        [ name:'Leia Organa', appearsIn:['A_NEW_HOPE', 'EMPIRE_STRIKES_BACK', 'RETURN_OF_THE_JEDI', 'THE_FORCE_AWAKENS'], friends:[[name:'C-3PO'], [name:'Luke Skywalker'], [name:'Han Solo'], [name:'R2-D2']]]
+                                        [ name:'Leia Organa', appearsIn:['A_NEW_HOPE', 'EMPIRE_STRIKES_BACK', 'RETURN_OF_THE_JEDI', 'THE_FORCE_AWAKENS'], friends:[[name:'C-3PO'], [name:'Han Solo'], [name:'Luke Skywalker'], [name:'R2-D2']]],
+                                        [ name:'Luke Skywalker', appearsIn:['A_NEW_HOPE', 'EMPIRE_STRIKES_BACK', 'RETURN_OF_THE_JEDI', 'THE_FORCE_AWAKENS'], friends:[[name:'C-3PO'], [name:'Han Solo'], [name:'Leia Organa'], [name:'R2-D2']]],
                                 ]
                         ]
                 ]
@@ -234,7 +234,7 @@ class StarwarsQueryExecutorTest extends Specification {
         result.toString() == expected.toString()
     }
 
-    def 'Pagination at the root'() {
+    def 'Pagination at the root page 1'() {
         given:
         def query = '''
         {
@@ -242,7 +242,7 @@ class StarwarsQueryExecutorTest extends Specification {
                 totalPages
                 totalElements
                 content {
-                    name
+                    name (orderBy: ASC)
                 }
             }
         }
@@ -252,8 +252,142 @@ class StarwarsQueryExecutorTest extends Specification {
                         totalPages: 3,
                         totalElements: 6,
                         content: [
+                                [ name: 'Darth Maul' ],
                                 [ name: 'Darth Vader' ],
+                        ]
+                ]
+        ]
+
+        when:
+        def result = executor.execute(query).data
+
+        then:
+        result == expected
+    }
+
+    def 'Pagination at the root page 2'() {
+        given:
+        def query = '''
+        {
+            HumanConnection(paginationRequest: { page: 2, size: 2 }) {
+                totalPages
+                totalElements
+                content {
+                    name (orderBy: ASC)
+                }
+            }
+        }
+        '''
+        def expected = [
+                HumanConnection: [
+                        totalPages: 3,
+                        totalElements: 6,
+                        content: [
+							[ name: 'Han Solo'],
+							[ name: 'Leia Organa'],
+                        ]
+                ]
+        ]
+
+        when:
+        def result = executor.execute(query).data
+
+        then:
+        result == expected
+    }
+
+    def 'Pagination at the root with filtering'() {
+        given:
+        def query = '''
+        {
+            HumanConnection(paginationRequest: { page: 1, size: 2 }) {
+                totalPages
+                totalElements
+                content (name: "Luke Skywalker") {
+                    name
+                }
+            }
+        }
+        '''
+        def expected = [
+                HumanConnection: [
+                        totalPages: 1,
+                        totalElements: 1,
+                        content: [
                                 [ name: 'Luke Skywalker' ]
+                        ]
+                ]
+        ]
+
+        when:
+        def result = executor.execute(query).data
+
+        then:
+        result == expected
+    }
+
+    def 'Pagination at the root with nested filtering'() {
+        given:
+        def query = '''
+        {
+            HumanConnection(paginationRequest: { page: 1, size: 2 }) {
+                totalPages
+                totalElements
+                content {
+                    name (orderBy: ASC)
+					favoriteDroid (joinType: INNER, name: "C-3PO") {
+						name
+					}
+                }
+            }
+        }
+        '''
+        def expected = [
+                HumanConnection: [
+                        totalPages: 1,
+                        totalElements: 2,
+                        content: [
+                                [ name: 'Leia Organa', favoriteDroid:[name: 'C-3PO'] ],
+                                [ name: 'Luke Skywalker', favoriteDroid:[name: 'C-3PO'] ]
+                        ]
+                ]
+        ]
+
+        when:
+        def result = executor.execute(query).data
+
+        then:
+        result == expected
+    }
+
+    def 'Pagination at the root with nested filtering and fetch'() {
+		
+		//if fetch is enabled, this test will force it by retrieving father
+        given:
+        def query = '''
+        {
+            HumanConnection(paginationRequest: { page: 1, size: 2 }) {
+                totalPages
+                totalElements
+                content {
+                    name (orderBy: ASC)
+					favoriteDroid (joinType: INNER, name: "C-3PO") {
+						name
+					}
+					father {
+						name
+					}
+                }
+            }
+        }
+        '''
+        def expected = [
+                HumanConnection: [
+                        totalPages: 1,
+                        totalElements: 2,
+                        content: [
+                                [ name: 'Leia Organa', favoriteDroid:[name: 'C-3PO'], father:[name:'Darth Vader'] ],
+                                [ name: 'Luke Skywalker', favoriteDroid:[name: 'C-3PO'], father:[name:'Darth Vader'] ]
                         ]
                 ]
         ]
@@ -387,16 +521,16 @@ class StarwarsQueryExecutorTest extends Specification {
         def query = '''
         {
           Human(appearsIn: [THE_FORCE_AWAKENS]) {
-            name
+            name (orderBy: ASC)
             appearsIn
           }
         }
         '''
         def expected = [
                 Human: [
-                    [ name: 'Luke Skywalker', appearsIn: [Episode.A_NEW_HOPE, Episode.EMPIRE_STRIKES_BACK, Episode.RETURN_OF_THE_JEDI, Episode.THE_FORCE_AWAKENS]],
                     [ name: 'Han Solo', appearsIn: [Episode.A_NEW_HOPE, Episode.EMPIRE_STRIKES_BACK, Episode.RETURN_OF_THE_JEDI, Episode.THE_FORCE_AWAKENS] ],
                     [ name: 'Leia Organa', appearsIn: [Episode.A_NEW_HOPE, Episode.EMPIRE_STRIKES_BACK, Episode.RETURN_OF_THE_JEDI, Episode.THE_FORCE_AWAKENS] ],
+                    [ name: 'Luke Skywalker', appearsIn: [Episode.A_NEW_HOPE, Episode.EMPIRE_STRIKES_BACK, Episode.RETURN_OF_THE_JEDI, Episode.THE_FORCE_AWAKENS]]
                 ]
         ]
 
@@ -416,7 +550,7 @@ class StarwarsQueryExecutorTest extends Specification {
         def query = '''
         {
           Human {
-            name
+            name (orderBy: ASC)
             gender(joinType: INNER, code: "Male") {
               description
             }
@@ -426,10 +560,10 @@ class StarwarsQueryExecutorTest extends Specification {
 		//the resulting order of this query is different based upon join vs fetch
         def expected = [
                 Human: [
-                        [ name: 'Darth Vader', gender: [ description: "Male" ] ],
                         [ name: 'Darth Maul', gender: [ description: "Male" ] ],
-                        [ name: 'Luke Skywalker', gender: [ description: "Male" ]],
+                        [ name: 'Darth Vader', gender: [ description: "Male" ] ],
                         [ name: 'Han Solo', gender: [ description: "Male" ] ],
+                        [ name: 'Luke Skywalker', gender: [ description: "Male" ]],
                         [ name: 'Wilhuff Tarkin', gender: [ description: "Male" ] ],
                 ]
         ]
@@ -730,7 +864,7 @@ class StarwarsQueryExecutorTest extends Specification {
         then:
         result == expected
     }
-	
+
 	//TODO: Add tests to assert nested fetching
 
     @Autowired

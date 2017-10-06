@@ -14,8 +14,8 @@ import javax.persistence.metamodel.SingularAttribute;
 import java.util.*;
 import java.util.stream.Collectors;
 import javax.persistence.ManyToMany;
+import javax.persistence.ManyToOne;
 import javax.persistence.OneToMany;
-import javax.persistence.PersistenceUnitUtil;
 
 public class JpaDataFetcher implements DataFetcher {
 
@@ -31,52 +31,59 @@ public class JpaDataFetcher implements DataFetcher {
     public Object get(DataFetchingEnvironment environment) {
 		
 		Object result = null;
-		
 		Field field = environment.getFields().iterator().next();
 		
-		if (environment.getSource() != null) {
-			Object source = environment.getSource();
-			
-			PersistenceUnitUtil persistenceUnitUtil = entityManager.getEntityManagerFactory().getPersistenceUnitUtil();
-			
-			//this could cause inconsistent behavior in the debugger if the debugger retrieves the attributes
-			if (persistenceUnitUtil.isLoaded(source, field.getName())) {
-				DataFetcher dataFetcher = new PropertyDataFetcher(field.getName());
-				result = dataFetcher.get(environment);
-			} else {
-				List resultList = getQuery(environment, field).getResultList();
-								
-				Member member = entityManager.getMetamodel().entity(environment.getSource().getClass()).getAttribute(field.getName()).getJavaMember();
-				java.lang.reflect.Field property = (java.lang.reflect.Field) member;
+		TypedQuery typedQuery = getQuery(environment, field);
+		
+		if (environment.getSource() instanceof PaginationResult) {
+			PaginationResult paginationResult = (PaginationResult) environment.getSource();
+			typedQuery.setMaxResults(paginationResult.getPageSize()).setFirstResult((paginationResult.getPage() - 1) * paginationResult.getPageSize());
+		}
+		
+		if (environment.getSource() != null && !(environment.getSource() instanceof PaginationResult)) {
+			List resultList = typedQuery.getResultList();
 
-				if (Collection.class.isAssignableFrom(property.getType())) {
-					result = resultList;
+			Member member = entityManager.getMetamodel().entity(environment.getSource().getClass()).getAttribute(field.getName()).getJavaMember();
+			java.lang.reflect.Field property = (java.lang.reflect.Field) member;
+
+			if (Collection.class.isAssignableFrom(property.getType())) {
+				result = resultList;
+			} else {
+				if (resultList.size() == 1) {
+					result = resultList.get(0);
 				} else {
-					if (resultList.size() == 1) {
-						result = resultList.get(0);
-					} else {
-						//TODO: this should be an error.
-					}
+					//TODO: this should be an error.
 				}
 			}
 			
 		} else {
-			result = getQuery(environment, field).getResultList();
+			result = typedQuery.getResultList();
 		}
 		
         return result;
     }
 
     protected TypedQuery getQuery(DataFetchingEnvironment environment, Field field) {
+		
         CriteriaBuilder cb = entityManager.getCriteriaBuilder();
         CriteriaQuery<Object> query = cb.createQuery((Class) entityType.getJavaType());
-        Root root = query.from(entityType);
 		
-		//process the order by for the root before we process any children in getQueryHelper
-        processOrderBy(field, root, query, cb);
+		buildCriteriaQuery(environment, field, cb, query, true);
 		
+        return entityManager.createQuery(query.distinct(true));
+    }
+
+    protected Root buildCriteriaQuery(DataFetchingEnvironment environment, Field field, CriteriaBuilder cb, CriteriaQuery<Object> query, boolean isFullQuery) {
+        
+		Root root = query.from(entityType);
+		
+		if (isFullQuery) {
+			//process the order by for the root before we process any children in getQueryHelper
+			processOrderBy(field, root, query, cb);
+		}
+
 		//recurse through the child fields
-		getQueryHelper(environment, field, cb, query, root, root, true);
+		getQueryHelper(environment, field, cb, query, root, root, isFullQuery);
 
 		List<Predicate> predicates = new ArrayList<>();
 
@@ -87,7 +94,8 @@ public class JpaDataFetcher implements DataFetcher {
 				.collect(Collectors.toList()));
 
 		//if there is a source, this is a nested query, we need to apply the filtering from the parent
-		if (environment.getSource() != null) {
+		//we check to ensure that this isn't a count query because the parent is not an entity in that case
+		if (environment.getSource() != null && isFullQuery) {
 			Predicate predicate = getPredicateForParent(environment, cb, root, query);
 		
 			if (predicate != null) {
@@ -97,86 +105,91 @@ public class JpaDataFetcher implements DataFetcher {
 		
         query.where(predicates.toArray(new Predicate[predicates.size()]));
 		
-        return entityManager.createQuery(query.distinct(true));
+		return root;
     }
 	
 	protected void getQueryHelper(DataFetchingEnvironment environment, Field field, 
 			CriteriaBuilder cb, CriteriaQuery<Object> query, From from, Path path, boolean parentFetched) {
 		
-		// Loop through all of the fields being requested
-        field.getSelectionSet().getSelections().forEach(selection -> {
-            if (selection instanceof Field) {
-                Field selectedField = (Field) selection;
+		//the selectionSet may be null when dealing with count queries
+		if (field.getSelectionSet() != null) {
+			// Loop through all of the fields being requested
+			field.getSelectionSet().getSelections().forEach(selection -> {
+				if (selection instanceof Field) {
+					Field selectedField = (Field) selection;
 
-                // "__typename" is part of the graphql introspection spec and has to be ignored by jpa
-                if(!"__typename".equals(selectedField.getName())) {
+					// "__typename" is part of the graphql introspection spec and has to be ignored by jpa
+					if(!"__typename".equals(selectedField.getName())) {
 
-                    Path fieldPath = path.get(selectedField.getName());
+						Path fieldPath = path.get(selectedField.getName());
 
-					//make left joins the default
-					JoinType joinType = JoinType.LEFT;
-					
-					Optional<Argument> joinTypeArgument = selectedField.getArguments().stream().filter(it -> "joinType".equals(it.getName())).findFirst();
-                    if (joinTypeArgument.isPresent()) {
-						joinType = JoinType.valueOf(((EnumValue) joinTypeArgument.get().getValue()).getName());
-					}
-					
-					List<Argument> arguments = selectedField.getArguments().stream()
-								.filter(it -> (!"orderBy".equals(it.getName()) && !"joinType".equals(it.getName())))
-								.map(it -> new Argument(it.getName(), it.getValue()))
-								.collect(Collectors.toList());
-					
-					boolean fetched = false;
-					Join join = null;
-					
-                    // Check if it's an object and the foreign side is One.  Then we can eagerly fetch causing an inner join instead of 2 queries
-                    if (fieldPath.getModel() instanceof SingularAttribute) {
-                        SingularAttribute attribute = (SingularAttribute) fieldPath.getModel();
-                        if (attribute.getPersistentAttributeType() == Attribute.PersistentAttributeType.MANY_TO_ONE || attribute.getPersistentAttributeType() == Attribute.PersistentAttributeType.ONE_TO_ONE) {
-                            //we can eagerly fetch TO_ONE associations assuming that the parent was also eagerly fetched
-							//hibernate doesn't allow fetches with 'with-clauses' so if there are arguments, we can't fetch
-							if (parentFetched && arguments.size() == 0) {
-								join = (Join) from.fetch(selectedField.getName(), joinType);
-								fetched = true;
-							} else {
+						//make left joins the default
+						JoinType joinType = JoinType.LEFT;
+
+						Optional<Argument> joinTypeArgument = selectedField.getArguments().stream().filter(it -> "joinType".equals(it.getName())).findFirst();
+						if (joinTypeArgument.isPresent()) {
+							joinType = JoinType.valueOf(((EnumValue) joinTypeArgument.get().getValue()).getName());
+						}
+
+						List<Argument> arguments = selectedField.getArguments().stream()
+									.filter(it -> (!"orderBy".equals(it.getName()) && !"joinType".equals(it.getName())))
+									.map(it -> new Argument(it.getName(), it.getValue()))
+									.collect(Collectors.toList());
+
+						boolean fetched = false;
+						Join join = null;
+
+						// Check if it's an object and the foreign side is One.  Then we can eagerly fetch causing an inner join instead of 2 queries
+						if (fieldPath.getModel() instanceof SingularAttribute) {
+							SingularAttribute attribute = (SingularAttribute) fieldPath.getModel();
+							if (attribute.getPersistentAttributeType() == Attribute.PersistentAttributeType.MANY_TO_ONE || attribute.getPersistentAttributeType() == Attribute.PersistentAttributeType.ONE_TO_ONE) {
+								//we can eagerly fetch TO_ONE associations assuming that the parent was also eagerly fetched
+								//hibernate doesn't allow fetches with 'with-clauses' so if there are arguments, we can't fetch
+								
+								//disabled fetching due to issues with sub-queries and count queries
+								/* if (parentFetched && arguments.size() == 0) {
+									join = (Join) from.fetch(selectedField.getName(), joinType);
+									fetched = true;
+								} else { */
+									join = from.join(selectedField.getName(), joinType);
+								//}
+							}
+
+						} else { //Otherwise, assume the foreign side is many
+							if (selectedField.getSelectionSet() != null) {
+								//Fetch fetch = from.fetch(selectedField.getName(), joinType);
+								//TODO: if we fetch, update the boolean
 								join = from.join(selectedField.getName(), joinType);
 							}
 						}
-						
-                    } else { //Otherwise, assume the foreign side is many
-						if (selectedField.getSelectionSet() != null) {
-							//Fetch fetch = from.fetch(selectedField.getName(), joinType);
-							//TODO: if we fetch, update the boolean
-							join = from.join(selectedField.getName(), joinType);
+
+						//Let's assume that we can eventually figure out when to fetch (taking nesting into account) and when not to
+						if (fetched) {
+							//it's safe to process the ordering for this instances children
+							processOrderBy(selectedField, join, query, cb);
+						}
+
+						if (join != null) {
+							final Join forLambda = (Join) join;
+
+							getQueryHelper(environment, selectedField, cb, query, ((From)forLambda), ((Join) forLambda), fetched);
+
+							List<Predicate> joinPredicates = arguments.stream().map(
+									it -> getPredicate(cb, ((Join) forLambda).get(it.getName()), environment, it)).collect(Collectors.toList()
+								);
+
+							// don't blow away an existing condition
+							if (forLambda.getOn() != null) {
+								joinPredicates.add(forLambda.getOn());
+							}
+
+							//add the predicates to the on to faciliate outer joins
+							forLambda.on(joinPredicates.toArray(EMPTY_PREDICATES));
 						}
 					}
-					
-					//Let's assume that we can eventually figure out when to fetch (taking nesting into account) and when not to
-					if (fetched) {
-						//it's safe to process the ordering for this instances children
-						processOrderBy(selectedField, join, query, cb);
-					}
-					
-					if (join != null) {
-						final Join forLambda = (Join) join;
-						
-						getQueryHelper(environment, selectedField, cb, query, ((From)forLambda), ((Join) forLambda), fetched);
-						
-						List<Predicate> joinPredicates = arguments.stream().map(
-								it -> getPredicate(cb, ((Join) forLambda).get(it.getName()), environment, it)).collect(Collectors.toList()
-							);
-												
-						// don't blow away an existing condition
-						if (forLambda.getOn() != null) {
-							joinPredicates.add(forLambda.getOn());
-						}
-						
-						//add the predicates to the on to faciliate outer joins
-						forLambda.on(joinPredicates.toArray(EMPTY_PREDICATES));
-					}
-                }
-            }
-        });
+				}
+			});
+		}
 		
 	}
 
@@ -272,22 +285,22 @@ public class JpaDataFetcher implements DataFetcher {
 		
 		Predicate result = null;
 		
-		//get the source, this will be used to filter the query
-		Member member = entityManager.getMetamodel().entity(environment.getSource().getClass()).getAttribute(environment.getFields().get(0).getName()).getJavaMember();
+		if (!(environment.getSource() instanceof PaginationResult)) {
+			//get the source, this will be used to filter the query
+			Member member = entityManager.getMetamodel().entity(environment.getSource().getClass()).getAttribute(environment.getFields().get(0).getName()).getJavaMember();
 
-		//TODO: this might need criteria for method as javaField.getAnnotation(OneToMany.class);
-		if (member instanceof java.lang.reflect.Field) {
-			java.lang.reflect.Field javaField = (java.lang.reflect.Field) member;
+			//TODO: this might need criteria for method as javaField.getAnnotation(OneToMany.class);
+			if (member instanceof java.lang.reflect.Field) {
+				java.lang.reflect.Field javaField = (java.lang.reflect.Field) member;
 
-			OneToMany oneToMany = javaField.getAnnotation(OneToMany.class);
-
-			if (oneToMany != null) {
-				String mappedBy = oneToMany.mappedBy();
-				result = cb.equal(root.get(mappedBy), cb.literal(environment.getSource()));
-			} else {
+				OneToMany oneToMany = javaField.getAnnotation(OneToMany.class);
+				ManyToOne manyToOne = javaField.getAnnotation(ManyToOne.class);
 				ManyToMany manyToMany = javaField.getAnnotation(ManyToMany.class);
-				
-				if (manyToMany != null) {
+
+				if (oneToMany != null) {
+					String mappedBy = oneToMany.mappedBy();
+					result = cb.equal(root.get(mappedBy), cb.literal(environment.getSource()));
+				} else if (manyToMany != null || manyToOne != null) {
 					/* Since the @ManyToMany only needs to be defined one side we can't assume that this side has a clean mapping
 					 * back to the parent.  The tests provide a good example of this (C-3PO is not one of Han's friends, even though
 					 * C-3PO considers Han a friend.
@@ -300,46 +313,50 @@ public class JpaDataFetcher implements DataFetcher {
 					Join subQueryJoin = subQueryRoot.join(environment.getFields().get(0).getName());
 					subQuery.select(subQueryJoin);
 					result = root.in(subQuery);
-				}
+				} 
 			}
 		}
-
+			
 		return result;
 	}
 
 	private void processOrderBy(Field field, Path path, CriteriaQuery<Object> query, CriteriaBuilder cb) {
-		// Loop through this fields selections and apply the ordering
-		field.getSelectionSet().getSelections().forEach(selection -> {
-			if (selection instanceof Field) {
-				Field selectedField = (Field) selection;
-				
-				// "__typename" is part of the graphql introspection spec and has to be ignored by jpa
-				if(!"__typename".equals(selectedField.getName())) {
-					
-					Path fieldPath = path.get(selectedField.getName());
-					
-					// Process the orderBy clause - orderBy can only be processed for fields actually being returned, but this should be smart enough to account for fetches
-					Optional<Argument> orderByArgument = selectedField.getArguments().stream().filter(it -> "orderBy".equals(it.getName())).findFirst();
-					if (orderByArgument.isPresent()) {
-						
-						List<Order> orders = new ArrayList<>();
-						
-						//add the previous ordering first so that it is retained
-						if (query.getOrderList() != null) {
-							orders.addAll(query.getOrderList());
+		
+		//the selectionSet may be null when dealing with count queries
+		if (field.getSelectionSet() != null) {
+			// Loop through this fields selections and apply the ordering
+			field.getSelectionSet().getSelections().forEach(selection -> {
+				if (selection instanceof Field) {
+					Field selectedField = (Field) selection;
+
+					// "__typename" is part of the graphql introspection spec and has to be ignored by jpa
+					if(!"__typename".equals(selectedField.getName())) {
+
+						Path fieldPath = path.get(selectedField.getName());
+
+						// Process the orderBy clause - orderBy can only be processed for fields actually being returned, but this should be smart enough to account for fetches
+						Optional<Argument> orderByArgument = selectedField.getArguments().stream().filter(it -> "orderBy".equals(it.getName())).findFirst();
+						if (orderByArgument.isPresent()) {
+
+							List<Order> orders = new ArrayList<>();
+
+							//add the previous ordering first so that it is retained
+							if (query.getOrderList() != null) {
+								orders.addAll(query.getOrderList());
+							}
+
+							if ("DESC".equals(((EnumValue) orderByArgument.get().getValue()).getName())) {
+								orders.add(cb.desc(fieldPath));
+							} else {
+								orders.add(cb.asc(fieldPath));
+							}
+
+							query.orderBy(orders);
 						}
-						
-						if ("DESC".equals(((EnumValue) orderByArgument.get().getValue()).getName())) {
-							orders.add(cb.desc(fieldPath));
-						} else {
-							orders.add(cb.asc(fieldPath));
-						}
-						
-						query.orderBy(orders);
 					}
 				}
-			}
-		});
+			});
+		}
 	}
 
 	private Path getRootArgumentPath(Root root, Argument it) {

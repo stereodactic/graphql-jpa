@@ -21,4 +21,8 @@ public class Human extends Character {
     @JoinColumn(name = "gender_code_id")
     CodeList gender;
 
+	//we intend for this to be eagerly fetched
+	@ManyToOne
+    @JoinColumn(name = "father_id")
+    Human father;
 }
