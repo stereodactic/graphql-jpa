@@ -199,8 +199,8 @@ public class JpaDataFetcher implements DataFetcher {
 			//this must be an object in case an enum is returned
 			Object value = convertValue(environment, argument, argument.getValue());
 			
-			if (value instanceof List) {
-				return path.in(value);
+			if (value instanceof Collection) {
+				return path.in((Collection)value);
 			} else {
 				return cb.equal(path, value);
 			}

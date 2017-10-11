@@ -67,7 +67,7 @@ class StarwarsQueryExecutorTest extends Specification {
         given:
         def query = '''
         {
-            Human(id: "1000") {
+            Human(id: 1000) {
                 name
                 homePlanet
                 favoriteDroid {
@@ -93,7 +93,7 @@ class StarwarsQueryExecutorTest extends Specification {
         given:
         def query = '''
         {
-            Human(id: "1000") {
+            Human(id: 1000) {
                 name
                 homePlanet
                 friends {
@@ -118,7 +118,7 @@ class StarwarsQueryExecutorTest extends Specification {
     def 'Query with parameter'() {
         given:
         def query = '''
-        query humanQuery($id: [String!]) {
+        query humanQuery($id: [Int!]) {
             Human(id: $id) {
                 name
                 homePlanet
@@ -132,7 +132,7 @@ class StarwarsQueryExecutorTest extends Specification {
         ]
 
         when:
-        def result = executor.execute(query, [id: "1001"]).data
+        def result = executor.execute(query, [id: 1001]).data
 
         then:
         result == expected
@@ -142,11 +142,11 @@ class StarwarsQueryExecutorTest extends Specification {
         given:
         def query = '''
         {
-            luke: Human(id: "1000") {
+            luke: Human(id: 1000) {
                 name
                 homePlanet
             }
-            leia: Human(id: "1003") {
+            leia: Human(id: 1003) {
                 name
             }
         }
@@ -171,10 +171,10 @@ class StarwarsQueryExecutorTest extends Specification {
         given:
         def query = """
         query UseFragment {
-            luke: Human(id: "1000") {
+            luke: Human(id: 1000) {
                 ...HumanFragment
             }
-            leia: Human(id: "1003") {
+            leia: Human(id: 1003) {
                 ...HumanFragment
             }
         }
@@ -202,7 +202,7 @@ class StarwarsQueryExecutorTest extends Specification {
         given:
         def query = '''
         {
-            Droid(id: "2001") {
+            Droid(id: 2001) {
                 name
                 friends {
                     name (orderBy: ASC)
@@ -813,6 +813,31 @@ class StarwarsQueryExecutorTest extends Specification {
         def query = '''
         {
             Human(name: ["Darth Vader", "Leia Organa", "Luke Skywalker"]) {
+                name(orderBy: ASC)
+                homePlanet
+            }
+        }
+        '''
+        def expected = [
+			Human:[
+				[ name: 'Darth Vader', homePlanet: "Tatooine"],
+				[ name: 'Leia Organa', homePlanet: "Alderaan"],
+				[ name: 'Luke Skywalker', homePlanet: "Tatooine"]
+			]
+        ]
+
+        when:
+        def result = executor.execute(query).data
+
+        then:
+        result == expected
+    }
+	
+	def 'Multiple filter values on Entity Id'() {
+        given:
+        def query = '''
+        {
+            Human(id: [1000, 1001, 1003]) {
                 name(orderBy: ASC)
                 homePlanet
             }

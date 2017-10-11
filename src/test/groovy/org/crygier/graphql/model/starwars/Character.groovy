@@ -12,7 +12,7 @@ abstract class Character {
 
     @Id
     @SchemaDocumentation("Primary Key for the Character Class")
-    String id;
+    Integer id;
 
     @SchemaDocumentation("Name of the character")
     String name;
