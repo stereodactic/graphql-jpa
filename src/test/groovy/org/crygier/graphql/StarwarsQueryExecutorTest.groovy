@@ -138,6 +138,29 @@ class StarwarsQueryExecutorTest extends Specification {
         result == expected
     }
 
+    def 'Query with mismatched parameter name'() {
+        given:
+        def query = '''
+        query humanQuery($humanId: [Int!]) {
+            Human(id: $humanId) {
+                name
+                homePlanet
+            }
+        }
+        '''
+        def expected = [
+                Human: [
+                        [name: 'Darth Vader', homePlanet: 'Tatooine']
+                ]
+        ]
+
+        when:
+        def result = executor.execute(query, [humanId: 1001]).data
+
+        then:
+        result == expected
+    }
+
     def 'Query with alias'() {
         given:
         def query = '''
@@ -654,6 +677,34 @@ class StarwarsQueryExecutorTest extends Specification {
         result == expected
     }
 	
+	/*
+    def 'ManyToMany test nested parameter'() {
+        given:
+        def query = '''
+			query humanQuery($friend: [String!]) {
+				Human(name: "Luke Skywalker") {
+					name
+					homePlanet
+					friends(joinType: INNER, name: $friend) {
+						name
+					}
+				}
+			}
+        '''
+        def expected = [
+                Human: [
+                        [name: 'Luke Skywalker', homePlanet: 'Tatooine', friends: [[name: 'Han Solo']]]
+                ]
+        ]
+
+        when:
+        def result = executor.execute(query, [friend: "Han Solo"]).data
+
+        then:
+        result == expected
+    }
+	*/
+   
 	def 'Outer Join Nested Objects by Default'() {
         given:
         def query = '''

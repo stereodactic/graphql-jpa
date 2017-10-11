@@ -233,7 +233,10 @@ public class JpaDataFetcher implements DataFetcher {
 			return ((StringValue) value).getValue();
         }
         else if (value instanceof VariableReference)
-            return environment.getArguments().get(((VariableReference) value).getName());
+			//the VariableReference value is the name of the variable - the variable value is not passed as an argument to the environment
+			//instead the graphql-java library does the substitution, so we can just ask for the desired argument
+            //return environment.getArguments().get(((VariableReference) value).getName());
+			return environment.getArguments().get(argument.getName());
         else if (value instanceof ArrayValue)
             return ((ArrayValue) value).getValues().stream().map((it) -> convertValue(environment, argument, it)).collect(Collectors.toList());
         else if (value instanceof EnumValue) {
