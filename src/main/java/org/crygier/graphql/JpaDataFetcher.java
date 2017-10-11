@@ -16,6 +16,7 @@ import java.util.stream.Collectors;
 import javax.persistence.ManyToMany;
 import javax.persistence.ManyToOne;
 import javax.persistence.OneToMany;
+import javax.persistence.OneToOne;
 
 public class JpaDataFetcher implements DataFetcher {
 
@@ -293,11 +294,15 @@ public class JpaDataFetcher implements DataFetcher {
 			if (member instanceof java.lang.reflect.Field) {
 				java.lang.reflect.Field javaField = (java.lang.reflect.Field) member;
 
+				OneToOne oneToOne = javaField.getAnnotation(OneToOne.class);
 				OneToMany oneToMany = javaField.getAnnotation(OneToMany.class);
 				ManyToOne manyToOne = javaField.getAnnotation(ManyToOne.class);
 				ManyToMany manyToMany = javaField.getAnnotation(ManyToMany.class);
 
-				if (oneToMany != null) {
+				if (oneToOne != null) {
+					String mappedBy = oneToOne.mappedBy();
+					result = cb.equal(root.get(mappedBy), cb.literal(environment.getSource()));
+				} else if (oneToMany != null) {
 					String mappedBy = oneToMany.mappedBy();
 					result = cb.equal(root.get(mappedBy), cb.literal(environment.getSource()));
 				} else if (manyToMany != null || manyToOne != null) {
