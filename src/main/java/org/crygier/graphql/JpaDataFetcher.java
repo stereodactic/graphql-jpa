@@ -302,13 +302,12 @@ public class JpaDataFetcher implements DataFetcher {
 				ManyToOne manyToOne = javaField.getAnnotation(ManyToOne.class);
 				ManyToMany manyToMany = javaField.getAnnotation(ManyToMany.class);
 
-				if (oneToOne != null) {
-					String mappedBy = oneToOne.mappedBy();
-					result = cb.equal(root.get(mappedBy), cb.literal(environment.getSource()));
+				if (oneToOne != null && oneToOne.mappedBy() != null && !"".equals(oneToOne.mappedBy().trim())) { //TODO: use StringUtils instead?
+					result = cb.equal(root.get(oneToOne.mappedBy()), cb.literal(environment.getSource()));
 				} else if (oneToMany != null) {
 					String mappedBy = oneToMany.mappedBy();
 					result = cb.equal(root.get(mappedBy), cb.literal(environment.getSource()));
-				} else if (manyToMany != null || manyToOne != null) {
+				} else if (manyToMany != null || manyToOne != null || oneToOne != null) { //the OneToOne case is also intended here
 					/* Since the @ManyToMany only needs to be defined one side we can't assume that this side has a clean mapping
 					 * back to the parent.  The tests provide a good example of this (C-3PO is not one of Han's friends, even though
 					 * C-3PO considers Han a friend.
