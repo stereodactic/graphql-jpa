@@ -96,7 +96,7 @@ public class JpaDataFetcher implements DataFetcher {
 
 		//if there is a source, this is a nested query, we need to apply the filtering from the parent
 		//we check to ensure that this isn't a count query because the parent is not an entity in that case
-		if (environment.getSource() != null && isFullQuery) {
+		if (environment.getSource() != null) {
 			Predicate predicate = getPredicateForParent(environment, cb, root, query);
 		
 			if (predicate != null) {
@@ -119,9 +119,19 @@ public class JpaDataFetcher implements DataFetcher {
 				if (selection instanceof Field) {
 					Field selectedField = (Field) selection;
 
-					// "__typename" is part of the graphql introspection spec and has to be ignored by jpa
-					if(!"__typename".equals(selectedField.getName())) {
-
+					
+					if (selectedField.getName().contains("Connection")) {
+						
+						Optional<graphql.language.Selection> content = 
+								field.getSelectionSet().getSelections().stream().filter(it -> ("content".equals(((Field)it).getName()))).findFirst();
+						
+						if (content.isPresent()) {
+							getQueryHelper(environment, (Field) content.get(), cb, query, from, path, parentFetched);
+						}
+						
+					} else if (!"__typename".equals(selectedField.getName())) {
+						// "__typename" is part of the graphql introspection spec and has to be ignored by jpa
+						
 						Path fieldPath = path.get(selectedField.getName());
 
 						//make left joins the default
@@ -288,10 +298,26 @@ public class JpaDataFetcher implements DataFetcher {
 	private Predicate getPredicateForParent(DataFetchingEnvironment environment, CriteriaBuilder cb, Root root, CriteriaQuery query) {
 		
 		Predicate result = null;
+		Object parent = null;
+		String fieldName = null;
 		
-		if (!(environment.getSource() instanceof PaginationResult)) {
+		if (environment.getSource() instanceof PaginationResult) {
+			PaginationResult paginationResult = ((PaginationResult) environment.getSource());
+			parent = paginationResult.getParent();
+			if (parent != null) {
+				fieldName = paginationResult.getFieldName().substring(0, paginationResult.getFieldName().indexOf("Connection"));
+			}
+		} else {
+			parent = environment.getSource();
+			fieldName = environment.getFields().get(0).getName();
+			if (fieldName.contains("Connection")) {
+				fieldName = fieldName.substring(0, fieldName.indexOf("Connection"));
+			}
+		}
+		
+		if (fieldName != null) {
 			//get the source, this will be used to filter the query
-			Member member = entityManager.getMetamodel().entity(environment.getSource().getClass()).getAttribute(environment.getFields().get(0).getName()).getJavaMember();
+			Member member = entityManager.getMetamodel().entity(parent.getClass()).getAttribute(fieldName).getJavaMember();
 
 			//TODO: this might need criteria for method as javaField.getAnnotation(OneToMany.class);
 			if (member instanceof java.lang.reflect.Field) {
@@ -303,10 +329,10 @@ public class JpaDataFetcher implements DataFetcher {
 				ManyToMany manyToMany = javaField.getAnnotation(ManyToMany.class);
 
 				if (oneToOne != null && oneToOne.mappedBy() != null && !"".equals(oneToOne.mappedBy().trim())) { //TODO: use StringUtils instead?
-					result = cb.equal(root.get(oneToOne.mappedBy()), cb.literal(environment.getSource()));
+					result = cb.equal(root.get(oneToOne.mappedBy()), cb.literal(parent));
 				} else if (oneToMany != null) {
 					String mappedBy = oneToMany.mappedBy();
-					result = cb.equal(root.get(mappedBy), cb.literal(environment.getSource()));
+					result = cb.equal(root.get(mappedBy), cb.literal(parent));
 				} else if (manyToMany != null || manyToOne != null || oneToOne != null) { //the OneToOne case is also intended here
 					/* Since the @ManyToMany only needs to be defined one side we can't assume that this side has a clean mapping
 					 * back to the parent.  The tests provide a good example of this (C-3PO is not one of Han's friends, even though
@@ -315,9 +341,9 @@ public class JpaDataFetcher implements DataFetcher {
 					 * This link provides guidance: https://stackoverflow.com/questions/4483576/jpa-2-0-criteria-api-subqueries-in-expressions
 					 */
 					Subquery subQuery = query.subquery(root.getJavaType());
-					Root subQueryRoot = subQuery.from(environment.getSource().getClass());
-					subQuery.where(cb.equal(subQueryRoot, cb.literal(environment.getSource())));
-					Join subQueryJoin = subQueryRoot.join(environment.getFields().get(0).getName());
+					Root subQueryRoot = subQuery.from(parent.getClass());
+					subQuery.where(cb.equal(subQueryRoot, cb.literal(parent)));
+					Join subQueryJoin = subQueryRoot.join(fieldName);
 					subQuery.select(subQueryJoin);
 					result = root.in(subQuery);
 				} 
@@ -337,7 +363,7 @@ public class JpaDataFetcher implements DataFetcher {
 					Field selectedField = (Field) selection;
 
 					// "__typename" is part of the graphql introspection spec and has to be ignored by jpa
-					if(!"__typename".equals(selectedField.getName())) {
+					if(!"__typename".equals(selectedField.getName()) && !selectedField.getName().contains("Connection")) {
 
 						Path fieldPath = path.get(selectedField.getName());
 

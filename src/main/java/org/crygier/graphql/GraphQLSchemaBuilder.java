@@ -26,7 +26,9 @@ import javax.persistence.metamodel.SingularAttribute;
 import javax.persistence.metamodel.Type;
 import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Member;
+import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -37,6 +39,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.logging.Level;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.persistence.criteria.JoinType;
@@ -49,6 +52,7 @@ public class GraphQLSchemaBuilder {
     private EntityManager entityManager;
 
     private Map<Class, GraphQLType> classCache = new HashMap<>();
+    private Map<EntityType, GraphQLObjectType> connectorCache = new HashMap<>();
     private Map<EntityType, GraphQLObjectType> entityCache = new HashMap<>();
 
     public GraphQLSchemaBuilder(EntityManager entityManager) {
@@ -67,6 +71,9 @@ public class GraphQLSchemaBuilder {
         queryType.fields(entityManager.getMetamodel().getEntities().stream().filter(this::isNotIgnored).map(this::getQueryFieldDefinition).collect(Collectors.toList()));
         queryType.fields(entityManager.getMetamodel().getEntities().stream().filter(this::isNotIgnored).map(this::getQueryFieldPageableDefinition).collect(Collectors.toList()));
 
+		//Now that we've generated the base objects and the base objects for pagination, we need to modify the base objects to add nested pagination
+		entityManager.getMetamodel().getEntities().stream().filter(this::isNotIgnored).forEach(this::appendNestedPaginationFields);
+		
         return queryType.build();
     }
 
@@ -81,22 +88,8 @@ public class GraphQLSchemaBuilder {
     }
 
     private GraphQLFieldDefinition getQueryFieldPageableDefinition(EntityType<?> entityType) {
-        GraphQLObjectType pageType = GraphQLObjectType.newObject()
-                .name(entityType.getName() + "Connection")
-                .description("'Connection' response wrapper object for " + entityType.getName() + ".  When pagination or aggregation is requested, this object will be returned with metadata about the query.")
-                .field(GraphQLFieldDefinition.newFieldDefinition().name("totalPages")
-						.description("Total number of pages calculated on the database for this pageSize.").type(Scalars.GraphQLLong).build())
-                .field(GraphQLFieldDefinition.newFieldDefinition().name("totalElements")
-						.description("Total number of results on the database for this query.").type(Scalars.GraphQLLong).build())
-                .field(GraphQLFieldDefinition.newFieldDefinition()
-						.name("content")
-						.description("The actual object results")
-						.type(new GraphQLList(getObjectType(entityType)))
-						.dataFetcher(new JpaDataFetcher(entityManager, entityType))
-						.argument(entityType.getAttributes().stream().filter(this::isValidInput).filter(this::isNotIgnored).map(this::getArgument).collect(Collectors.toList()))
-						.build())
-                .build();
-
+        GraphQLObjectType pageType = getConnectorType(entityType);
+		
         return GraphQLFieldDefinition.newFieldDefinition()
                 .name(entityType.getName() + "Connection")
                 .description("'Connection' request wrapper object for " + entityType.getName() + ".  Use this object in a query to request things like pagination or aggregation in an argument.  Use the 'content' field to request actual fields ")
@@ -119,20 +112,77 @@ public class GraphQLSchemaBuilder {
         throw new IllegalArgumentException("Attribute " + attribute + " cannot be mapped as an Input Argument");
     }
 
+    private GraphQLObjectType getConnectorType(EntityType<?> entityType) {
+        if (connectorCache.containsKey(entityType))
+            return connectorCache.get(entityType);
+
+		GraphQLObjectType pageType = GraphQLObjectType.newObject()
+                .name(entityType.getName() + "Connection")
+                .description("'Connection' response wrapper object for " + entityType.getName() + ".  When pagination or aggregation is requested, this object will be returned with metadata about the query.")
+                .field(GraphQLFieldDefinition.newFieldDefinition().name("totalPages")
+						.description("Total number of pages calculated on the database for this pageSize.").type(Scalars.GraphQLLong).build())
+                .field(GraphQLFieldDefinition.newFieldDefinition().name("totalElements")
+						.description("Total number of results on the database for this query.").type(Scalars.GraphQLLong).build())
+                .field(GraphQLFieldDefinition.newFieldDefinition()
+						.name("content")
+						.description("The actual object results")
+						.type(new GraphQLList(getObjectType(entityType)))
+						.dataFetcher(new JpaDataFetcher(entityManager, entityType))
+						.argument(entityType.getAttributes().stream().filter(this::isValidInput).filter(this::isNotIgnored).map(this::getArgument).collect(Collectors.toList()))
+						.build())
+                .build();
+
+		connectorCache.put(entityType, pageType);
+
+        return pageType;
+    }
+
     private GraphQLObjectType getObjectType(EntityType<?> entityType) {
         if (entityCache.containsKey(entityType))
             return entityCache.get(entityType);
 
+		//generate standard fields from object
+		List<GraphQLFieldDefinition> fieldDefinitions = 
+				entityType.getAttributes().stream().filter(this::isNotIgnored).map(this::getObjectField).collect(Collectors.toList());
+		
         GraphQLObjectType answer = GraphQLObjectType.newObject()
                 .name(entityType.getName())
                 .description(getSchemaDocumentation( entityType.getJavaType()))
-                .fields(entityType.getAttributes().stream().filter(this::isNotIgnored).map(this::getObjectField).collect(Collectors.toList()))
+                .fields(fieldDefinitions)
                 .build();
 
         entityCache.put(entityType, answer);
 
         return answer;
     }
+	
+	private void appendNestedPaginationFields(EntityType<?> entityType) {
+		
+		GraphQLObjectType entityObject = entityCache.get(entityType);
+		
+		//the object should always exist in the cache
+		if (entityObject != null) {
+		
+			List<GraphQLFieldDefinition> fieldDefinitions = entityType.getAttributes().stream()
+							.filter(this::isNotIgnored).filter(this::isConnectorField).map(this::getObjectConnectorField).collect(Collectors.toList());
+
+			if (fieldDefinitions != null && !fieldDefinitions.isEmpty()) {
+				/* We use reflection to add the fields to the object after it was already built.  This can't be done at build time because of the
+				 * potential for circular references
+				 */
+				try {
+					Class clazz = entityObject.getClass();
+					Method method = clazz.getDeclaredMethod("buildDefinitionMap", List.class);
+					method.setAccessible(true);
+					method.invoke(entityObject, fieldDefinitions);
+				} catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException ex) {
+					java.util.logging.Logger.getLogger(GraphQLSchemaBuilder.class.getName()).log(Level.SEVERE, null, ex);
+				} catch (NoSuchMethodException | SecurityException ex) {
+					java.util.logging.Logger.getLogger(GraphQLSchemaBuilder.class.getName()).log(Level.SEVERE, null, ex);
+				}
+			}
+		}
+	}
 
     private GraphQLFieldDefinition getObjectField(Attribute attribute) {
         GraphQLType type = getAttributeType(attribute);
@@ -197,6 +247,57 @@ public class GraphQLSchemaBuilder {
         throw new IllegalArgumentException("Attribute " + attribute + " cannot be mapped as an Output Argument");
     }
 
+    private boolean isConnectorField(Attribute attribute) {
+        GraphQLType type = getAttributeType(attribute);
+        boolean result = false;
+		
+		if (type instanceof GraphQLOutputType) {	
+			if (attribute instanceof SingularAttribute && attribute.getPersistentAttributeType() != Attribute.PersistentAttributeType.BASIC) {
+				result = true;
+			} else if (attribute instanceof PluralAttribute) {
+				//TODO: this is hacky, attempting to prevent "java.lang.ClassCastException: org.hibernate.jpa.internal.metamodel.BasicTypeImpl cannot be cast to javax.persistence.metamodel.EntityType"
+				if (((PluralAttribute) attribute).getElementType() instanceof EntityType) {
+					result = true;
+				}
+			}
+		}
+		
+		return result;
+    }
+
+	private GraphQLFieldDefinition getObjectConnectorField(Attribute attribute) {
+        //GraphQLType type = getAttributeType(attribute);
+			
+		if (attribute instanceof SingularAttribute && attribute.getPersistentAttributeType() != Attribute.PersistentAttributeType.BASIC) {
+			EntityType entityType = (EntityType) ((SingularAttribute) attribute).getType();
+
+			return GraphQLFieldDefinition.newFieldDefinition()
+				.name(attribute.getName() + "Connection")
+				.description("'Connection' request wrapper object for " + entityType.getName() + ".  Use this object in a query to request things like pagination or aggregation in an argument.  Use the 'content' field to request actual fields ")
+				.type(getConnectorType(entityType))
+				.dataFetcher(new ExtendedJpaDataFetcher(entityManager, entityType))
+				.argument(paginationArgument)
+				.build();
+
+		} else if (attribute instanceof PluralAttribute) {
+
+			//TODO: this is hacky, attempting to prevent "java.lang.ClassCastException: org.hibernate.jpa.internal.metamodel.BasicTypeImpl cannot be cast to javax.persistence.metamodel.EntityType"
+			if (((PluralAttribute) attribute).getElementType() instanceof EntityType) {
+				EntityType entityType = (EntityType) ((PluralAttribute) attribute).getElementType();
+
+				return GraphQLFieldDefinition.newFieldDefinition()
+				.name(attribute.getName() + "Connection")
+				.description("'Connection' request wrapper object for " + entityType.getName() + ".  Use this object in a query to request things like pagination or aggregation in an argument.  Use the 'content' field to request actual fields ")
+				.type(getConnectorType(entityType))
+				.dataFetcher(new ExtendedJpaDataFetcher(entityManager, entityType))
+				.argument(paginationArgument)
+				.build();
+			}
+		}
+		
+		throw new IllegalArgumentException("Attribute " + attribute + " cannot be mapped as an Connector Field");
+	}
+	
     private Stream<Attribute> findBasicAttributes(Collection<Attribute> attributes) {
         return attributes.stream().filter(this::isNotIgnored).filter(it -> it.getPersistentAttributeType() == Attribute.PersistentAttributeType.BASIC);
     }

@@ -14,11 +14,17 @@ public class PaginationResult {
 	
 	private Integer page;
 	
-	public PaginationResult(Long totalElements, Long totalPages, Integer pageSize, Integer page) {
+	private Object parent;
+	
+	private String fieldName;
+	
+	public PaginationResult(Long totalElements, Long totalPages, Integer pageSize, Integer page, Object parent, String fieldName) {
 		this.totalElements = totalElements;
 		this.totalPages = totalPages;
 		this.pageSize = pageSize;
 		this.page = page;
+		this.parent = parent;
+		this.fieldName = fieldName;
 	}
 
 	public Long getTotalElements() {
@@ -52,5 +58,20 @@ public class PaginationResult {
 	public void setPage(Integer page) {
 		this.page = page;
 	}
-	
+
+	public Object getParent() {
+		return parent;
+	}
+
+	public void setParent(Object parent) {
+		this.parent = parent;
+	}
+
+	public String getFieldName() {
+		return fieldName;
+	}
+
+	public void setFieldName(String fieldName) {
+		this.fieldName = fieldName;
+	}
 }

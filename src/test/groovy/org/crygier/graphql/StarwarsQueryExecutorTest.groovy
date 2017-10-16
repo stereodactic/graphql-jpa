@@ -447,6 +447,94 @@ class StarwarsQueryExecutorTest extends Specification {
         result == expected
     }
 
+    def 'Nested Pagination page 1'() {
+        given:
+        def query = '''
+        {
+			Human(id: 1000) {
+                name
+                homePlanet
+                friendsConnection (paginationRequest: { page: 1, size: 2 }) {
+					totalPages
+					totalElements
+					content {
+						name (orderBy: ASC)
+					}
+                }
+            }
+        }
+        '''
+        def expected = [
+			Human: [
+				[
+					name: 'Luke Skywalker', 
+					homePlanet: 'Tatooine', 
+					friendsConnection: [
+                        totalPages: 2,
+                        totalElements: 4,
+						content: [
+							[name: 'C-3PO'], [name: 'Han Solo']
+						]
+					]
+				]
+			]
+        ]
+
+        when:
+        def result = executor.execute(query).data
+
+        then:
+        result == expected
+    }
+
+    def 'Multiple Nested Pagination page 1'() {
+        given:
+        def query = '''
+        {
+            HumanConnection(paginationRequest: { page: 1, size: 2 }) {
+                totalPages
+                totalElements
+                content (id: 1000) {
+					name
+					homePlanet
+					friendsConnection (paginationRequest: { page: 1, size: 2 }) {
+						totalPages
+						totalElements
+						content {
+							name (orderBy: ASC)
+						}
+					}
+				}
+			}
+        }
+        '''
+        def expected = [
+			HumanConnection: [
+				totalPages: 1,
+				totalElements: 1,
+				content: [
+					[
+						name: 'Luke Skywalker', 
+						homePlanet: 'Tatooine', 
+						friendsConnection: [
+							totalPages: 2,
+							totalElements: 4,
+							content: [
+								[name: 'C-3PO'], [name: 'Han Solo']
+							]
+						]
+					]
+				]
+			]
+        ]
+
+        when:
+        def result = executor.execute(query).data
+
+        then:
+        result == expected
+    }
+
     def 'Ordering Fields'() {
         given:
         def query = '''

@@ -41,7 +41,7 @@ public class ExtendedJpaDataFetcher extends JpaDataFetcher {
 
 			paginationResult = new PaginationResult(totalElements, 
 					((Double) Math.ceil(totalElements / (double) pageInformation.size)).longValue(), 
-					pageInformation.size, pageInformation.page);
+					pageInformation.size, pageInformation.page, environment.getSource(), field.getName());
         }
 
         return paginationResult;
