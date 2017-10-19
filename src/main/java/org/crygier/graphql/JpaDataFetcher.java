@@ -345,7 +345,12 @@ public class JpaDataFetcher implements DataFetcher {
 					subQuery.where(cb.equal(subQueryRoot, cb.literal(parent)));
 					Join subQueryJoin = subQueryRoot.join(fieldName);
 					subQuery.select(subQueryJoin);
-					result = root.in(subQuery);
+					
+					if (manyToMany != null) {
+						result = root.in(subQuery);
+					} else {
+						result = cb.equal(root, subQuery);
+					}
 				} 
 			}
 		}
