@@ -18,7 +18,6 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
-import java.util.logging.Level;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.persistence.criteria.JoinType;
@@ -164,9 +163,9 @@ public class GraphQLSchemaBuilder {
 					method.setAccessible(true);
 					method.invoke(entityObject, fieldDefinitions);
 				} catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException ex) {
-					java.util.logging.Logger.getLogger(GraphQLSchemaBuilder.class.getName()).log(Level.SEVERE, null, ex);
+					log.error("Error appending connector fields to object", ex);
 				} catch (NoSuchMethodException | SecurityException ex) {
-					java.util.logging.Logger.getLogger(GraphQLSchemaBuilder.class.getName()).log(Level.SEVERE, null, ex);
+					log.error("Error appending connector fields to object", ex);
 				}
 			}
 		}

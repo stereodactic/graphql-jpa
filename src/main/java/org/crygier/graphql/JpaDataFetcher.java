@@ -2,7 +2,9 @@ package org.crygier.graphql;
 
 import graphql.language.*;
 import graphql.schema.*;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Member;
+import java.lang.reflect.Method;
 
 import javax.persistence.EntityManager;
 import javax.persistence.TypedQuery;
@@ -17,11 +19,15 @@ import javax.persistence.ManyToMany;
 import javax.persistence.ManyToOne;
 import javax.persistence.OneToMany;
 import javax.persistence.OneToOne;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class JpaDataFetcher implements DataFetcher {
 
     protected EntityManager entityManager;
     protected EntityType<?> entityType;
+	
+    private static final Logger log = LoggerFactory.getLogger(JpaDataFetcher.class);
 
     public JpaDataFetcher(EntityManager entityManager, EntityType<?> entityType) {
         this.entityManager = entityManager;
@@ -334,6 +340,7 @@ public class JpaDataFetcher implements DataFetcher {
 					String mappedBy = oneToMany.mappedBy();
 					result = cb.equal(root.get(mappedBy), cb.literal(parent));
 				} else if (manyToMany != null || manyToOne != null || oneToOne != null) { //the OneToOne case is also intended here
+					
 					/* Since the @ManyToMany only needs to be defined one side we can't assume that this side has a clean mapping
 					 * back to the parent.  The tests provide a good example of this (C-3PO is not one of Han's friends, even though
 					 * C-3PO considers Han a friend.
@@ -349,12 +356,54 @@ public class JpaDataFetcher implements DataFetcher {
 					if (manyToMany != null) {
 						result = root.in(subQuery);
 					} else {
-						result = cb.equal(root, subQuery);
+						
+						result = getFieldValueThroughHibernateProxy(parent, fieldName, result, cb, root);
+						
+						if (result == null) {
+							result = cb.equal(root, subQuery);
+						}
 					}
 				} 
 			}
 		}
 			
+		return result;
+	}
+
+	private Predicate getFieldValueThroughHibernateProxy(Object parent, String fieldName, Predicate result, CriteriaBuilder cb, Root root) {
+
+		//This implementation may be fragile if hibernate changes it's implementation.  However, the performance benefits
+		//of using the id is much better than using a subquery
+		Class clazz = parent.getClass();
+		try {
+			java.lang.reflect.Field field = clazz.getDeclaredField(fieldName);
+			field.setAccessible(true);
+
+			Object fieldValue = field.get(parent);
+
+			java.lang.reflect.Field handlerField = fieldValue.getClass().getDeclaredField("handler");
+			handlerField.setAccessible(true);
+
+			Object handler = handlerField.get(fieldValue);
+
+			try {
+				if (Class.forName("org.hibernate.proxy.LazyInitializer").isAssignableFrom(handler.getClass())) {
+					Method getIdentifier = handler.getClass().getMethod("getIdentifier", (Class[]) null);
+					result = cb.equal(root, getIdentifier.invoke(handler, (Object[]) null));
+				}
+			} catch (NoSuchMethodException | InvocationTargetException ex) {
+				log.warn("Error attempting to process hibernate proxy");
+				log.debug("Error invoking method", ex);
+			} catch (ClassNotFoundException ex) {
+				//This just means that we're not using hibernate
+				log.warn("Unable process hibernate proxy - Hibernate does not appear to be present");
+			}
+
+		} catch (NoSuchFieldException | SecurityException | IllegalArgumentException | IllegalAccessException ex) {
+				log.warn("Error attempting to process hibernate proxy");
+				log.debug("Error accessing field", ex);
+		}
+		
 		return result;
 	}
 
