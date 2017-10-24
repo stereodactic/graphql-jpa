@@ -20,6 +20,7 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import javax.persistence.Embeddable;
 import javax.persistence.criteria.JoinType;
 
 public class GraphQLSchemaBuilder {
@@ -32,6 +33,7 @@ public class GraphQLSchemaBuilder {
     private Map<Class, GraphQLType> classCache = new HashMap<>();
     private Map<EntityType, GraphQLObjectType> connectorCache = new HashMap<>();
     private Map<EntityType, GraphQLObjectType> entityCache = new HashMap<>();
+    private Map<EmbeddableType, GraphQLObjectType> embeddableCache = new HashMap<>();
 
     public GraphQLSchemaBuilder(EntityManager entityManager) {
         this.entityManager = entityManager;
@@ -142,6 +144,26 @@ public class GraphQLSchemaBuilder {
 
         return answer;
     }
+	
+	private GraphQLObjectType getEmbeddableType(Class clazz, EmbeddableType<?> embeddableType) {
+		
+		if (embeddableCache.containsKey(embeddableType)) {
+			return embeddableCache.get(embeddableType);
+		}
+
+		List<GraphQLFieldDefinition> fieldDefinitions
+				= embeddableType.getAttributes().stream().filter(this::isNotIgnored).flatMap(this::getObjectField).collect(Collectors.toList());
+
+		GraphQLObjectType answer = GraphQLObjectType.newObject()
+				.name(clazz.getSimpleName())
+				.description(getSchemaDocumentation(embeddableType.getJavaType()))
+				.fields(fieldDefinitions)
+				.build();
+
+		embeddableCache.put(embeddableType, answer);
+
+		return answer;
+	}
 	
 	private void appendNestedPaginationFields(EntityType<?> entityType) {
 		
@@ -332,7 +354,7 @@ public class GraphQLSchemaBuilder {
         }
 
         throw new UnsupportedOperationException(
-                "Class could not be mapped to GraphQL: '" + javaType.getClass().getTypeName() + "'");
+                "Class could not be mapped to GraphQL: '" + javaType.getTypeName() + "'");
     }
 
     private Stream<GraphQLType> getAttributeType(Attribute attribute) {
@@ -410,22 +432,28 @@ public class GraphQLSchemaBuilder {
     }
 
     private GraphQLType getTypeFromJavaType(Class clazz) {
+		
         if (clazz.isEnum()) {
-            if (classCache.containsKey(clazz))
-                return classCache.get(clazz);
+			if (classCache.containsKey(clazz)) {
+				return classCache.get(clazz);
+			}
 
-            GraphQLEnumType.Builder enumBuilder = GraphQLEnumType.newEnum().name(clazz.getSimpleName());
-            int ordinal = 0;
-            for (Enum enumValue : ((Class<Enum>) clazz).getEnumConstants())
-                enumBuilder.value(enumValue.name(), ordinal++);
+			GraphQLEnumType.Builder enumBuilder = GraphQLEnumType.newEnum().name(clazz.getSimpleName());
+			int ordinal = 0;
+			for (Enum enumValue : ((Class<Enum>) clazz).getEnumConstants()) {
+				enumBuilder.value(enumValue.name(), ordinal++);
+			}
 
-            GraphQLType answer = enumBuilder.build();
-            setIdentityCoercing(answer);
+			GraphQLType answer = enumBuilder.build();
+			setIdentityCoercing(answer);
 
-            classCache.put(clazz, answer);
+			classCache.put(clazz, answer);
 
-            return answer;
-        }
+			return answer;
+		} else if (clazz.getAnnotation(Embeddable.class) != null) {
+			EmbeddableType<?> embeddableType = entityManager.getMetamodel().embeddable(clazz);
+			return getEmbeddableType(clazz, embeddableType);
+		}
 
         return getBasicAttributeType(clazz);
     }

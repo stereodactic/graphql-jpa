@@ -44,7 +44,10 @@ class CollectionTest extends Specification {
         {
           CollectionEntity {
             id
-            objects
+            objects {
+			  color
+			  shape
+			}
           }
         }
         '''

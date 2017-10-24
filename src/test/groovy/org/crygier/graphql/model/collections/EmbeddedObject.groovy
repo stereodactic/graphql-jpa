@@ -1,3 +1,4 @@
+
 package org.crygier.graphql.model.collections;
 
 import groovy.transform.CompileStatic;
