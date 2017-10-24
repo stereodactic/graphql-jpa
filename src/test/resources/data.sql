@@ -106,3 +106,21 @@ insert into character_appears_in (character_id, appears_in) values
 -- Things
 insert into thing (id, type) values
     ('2D1EBC5B7D2741979CF0E84451C5BBB1', 'Thing1');
+
+-- Collection Entities
+insert into collection_entity(id) values
+	(1),
+	(2),
+	(3);
+
+insert into strings(owner_id, value) values
+	(1, 'uno'),
+	(1, 'dos'),
+	(1, 'tres'),
+	(3, 'odin'),
+	(3, 'dva');
+
+insert into objects(owner_id, color, shape) values
+	(1, 'red', 'square'),
+	(1, 'blue', 'circle'),
+	(2, 'yellow', 'oval');
