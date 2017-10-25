@@ -244,7 +244,24 @@ public class GraphQLSchemaBuilder {
 									.argument(arguments)
 									.build();
 
-						}
+						} /* else if (((PluralAttribute) attribute).getElementType() instanceof EmbeddableType) {
+							EmbeddableType foreignType = (EmbeddableType) ((PluralAttribute) attribute).getElementType();
+							Stream<Attribute> attributes = findBasicAttributes(foreignType.getAttributes());
+
+							attributes.forEach(it -> {
+								arguments.addAll(getArgument(it).collect(Collectors.toList()));
+							});
+
+							//To do this, the id of the parent would have to be taken into account here so that it actually queries based upon the parent
+							//relationship.  This still retains the n+1 problem though
+							return GraphQLFieldDefinition.newFieldDefinition()
+									.name(attribute.getName())
+									.description(getSchemaDocumentation(attribute.getJavaMember()))
+									.type((GraphQLOutputType) type)
+									.dataFetcher(new JpaDataFetcher(entityManager, foreignType))
+									.argument(arguments)
+									.build();
+						} */
 
 					}
 

@@ -65,5 +65,36 @@ class CollectionTest extends Specification {
         then:
         result == expected
     }
+
+	def 'retrieves a object element collection with nested entity'() {
+        given:
+        def query = '''
+        {
+          CollectionEntity {
+            id
+            objects {
+			  typeEntity {
+			    id
+				name
+				description
+			  }
+			}
+          }
+        }
+        '''
+        def expected = [
+			CollectionEntity: [
+			   [ id: '1', objects: [ [typeEntity: [id: '1', name: 'alpha', description: 'alpha type']] , [typeEntity: [id: '2', name: 'beta', description: 'beta type' ] ] ] ],
+			   [ id: '2', objects: [ [typeEntity: [id: '3', name: 'gamma', description: 'gamma type']] ] ],
+			   [ id: '3', objects: [] ]
+			]
+        ]
+
+        when:
+        def result = executor.execute(query).data
+
+        then:
+        result == expected
+    }
 	
 }

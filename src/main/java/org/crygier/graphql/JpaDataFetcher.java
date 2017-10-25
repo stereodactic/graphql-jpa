@@ -15,6 +15,8 @@ import javax.persistence.metamodel.PluralAttribute;
 import javax.persistence.metamodel.SingularAttribute;
 import java.util.*;
 import java.util.stream.Collectors;
+import javax.persistence.Embeddable;
+import javax.persistence.Entity;
 import javax.persistence.ManyToMany;
 import javax.persistence.ManyToOne;
 import javax.persistence.OneToMany;
@@ -50,7 +52,14 @@ public class JpaDataFetcher implements DataFetcher {
 		if (environment.getSource() != null && !(environment.getSource() instanceof PaginationResult)) {
 			List resultList = typedQuery.getResultList();
 
-			Member member = entityManager.getMetamodel().entity(environment.getSource().getClass()).getAttribute(field.getName()).getJavaMember();
+			Member member = null;
+			
+			if (environment.getSource().getClass().getAnnotation(Entity.class) != null) {
+				member = entityManager.getMetamodel().entity(environment.getSource().getClass()).getAttribute(field.getName()).getJavaMember();
+			} else if (environment.getSource().getClass().getAnnotation(Embeddable.class) != null) {
+				member = entityManager.getMetamodel().embeddable(environment.getSource().getClass()).getAttribute(field.getName()).getJavaMember();
+			}
+			
 			java.lang.reflect.Field property = (java.lang.reflect.Field) member;
 
 			if (Collection.class.isAssignableFrom(property.getType())) {
@@ -59,7 +68,7 @@ public class JpaDataFetcher implements DataFetcher {
 				if (resultList.size() == 1) {
 					result = resultList.get(0);
 				} else {
-					//TODO: this should be an error.
+					log.error("Error: unexpected number of results returned: " + resultList.size());
 				}
 			}
 			
@@ -323,7 +332,14 @@ public class JpaDataFetcher implements DataFetcher {
 		
 		if (fieldName != null) {
 			//get the source, this will be used to filter the query
-			Member member = entityManager.getMetamodel().entity(parent.getClass()).getAttribute(fieldName).getJavaMember();
+			
+			Member member = null;
+			
+			if (parent.getClass().getAnnotation(Entity.class) != null) {
+				member = entityManager.getMetamodel().entity(parent.getClass()).getAttribute(fieldName).getJavaMember();
+			} else if (parent.getClass().getAnnotation(Embeddable.class) != null) {
+				member = entityManager.getMetamodel().embeddable(parent.getClass()).getAttribute(fieldName).getJavaMember();
+			}
 
 			//TODO: this might need criteria for method as javaField.getAnnotation(OneToMany.class);
 			if (member instanceof java.lang.reflect.Field) {
@@ -339,39 +355,44 @@ public class JpaDataFetcher implements DataFetcher {
 				} else if (oneToMany != null) {
 					String mappedBy = oneToMany.mappedBy();
 					result = cb.equal(root.get(mappedBy), cb.literal(parent));
-				} else if (manyToMany != null || manyToOne != null || oneToOne != null) { //the OneToOne case is also intended here
+				} else if (manyToMany != null) {
+
+					Subquery subQuery = generateSubQuery(query, root, parent, cb, fieldName);
+					result = root.in(subQuery);
+				} else if ( manyToOne != null || oneToOne != null) {
+					result = getFieldValueThroughHibernateProxy(parent, fieldName, cb, root);
 					
-					/* Since the @ManyToMany only needs to be defined one side we can't assume that this side has a clean mapping
-					 * back to the parent.  The tests provide a good example of this (C-3PO is not one of Han's friends, even though
-					 * C-3PO considers Han a friend.
-					 *
-					 * This link provides guidance: https://stackoverflow.com/questions/4483576/jpa-2-0-criteria-api-subqueries-in-expressions
-					 */
-					Subquery subQuery = query.subquery(root.getJavaType());
-					Root subQueryRoot = subQuery.from(parent.getClass());
-					subQuery.where(cb.equal(subQueryRoot, cb.literal(parent)));
-					Join subQueryJoin = subQueryRoot.join(fieldName);
-					subQuery.select(subQueryJoin);
-					
-					if (manyToMany != null) {
-						result = root.in(subQuery);
-					} else {
-						
-						result = getFieldValueThroughHibernateProxy(parent, fieldName, result, cb, root);
-						
-						if (result == null) {
-							result = cb.equal(root, subQuery);
-						}
+					if (result == null) {
+						result = getFieldValueAsLiteral(parent, fieldName, cb, root);
 					}
-				} 
+				}
 			}
 		}
 			
 		return result;
 	}
 
-	private Predicate getFieldValueThroughHibernateProxy(Object parent, String fieldName, Predicate result, CriteriaBuilder cb, Root root) {
+	private Subquery generateSubQuery(CriteriaQuery query, Root root, Object parent, CriteriaBuilder cb, String fieldName) {
+		//the OneToOne case is also intended here
+		
+		/* Since the @ManyToMany only needs to be defined one side we can't assume that this side has a clean mapping
+		* back to the parent.  The tests provide a good example of this (C-3PO is not one of Han's friends, even though
+		* C-3PO considers Han a friend.
+		*
+		* This link provides guidance: https://stackoverflow.com/questions/4483576/jpa-2-0-criteria-api-subqueries-in-expressions
+		*/
+		Subquery subQuery = query.subquery(root.getJavaType());
+		Root subQueryRoot = subQuery.from(parent.getClass());
+		subQuery.where(cb.equal(subQueryRoot, cb.literal(parent)));
+		Join subQueryJoin = subQueryRoot.join(fieldName);
+		subQuery.select(subQueryJoin);
+		return subQuery;
+	}
 
+	private Predicate getFieldValueThroughHibernateProxy(Object parent, String fieldName, CriteriaBuilder cb, Root root) {
+
+		Predicate result = null;
+		
 		//This implementation may be fragile if hibernate changes it's implementation.  However, the performance benefits
 		//of using the id is much better than using a subquery
 		Class clazz = parent.getClass();
@@ -399,6 +420,29 @@ public class JpaDataFetcher implements DataFetcher {
 				log.warn("Unable process hibernate proxy - Hibernate does not appear to be present");
 			}
 
+		} catch (NoSuchFieldException | SecurityException | IllegalArgumentException | IllegalAccessException ex) {
+				log.warn("Error attempting to process hibernate proxy");
+				log.debug("Error accessing field", ex);
+		}
+		
+		return result;
+	}
+	
+	private Predicate getFieldValueAsLiteral(Object parent, String fieldName, CriteriaBuilder cb, Root root) {
+		
+		Predicate result = null;
+		
+		//This implementation may be fragile if hibernate changes it's implementation.  However, the performance benefits
+		//of using the id is much better than using a subquery
+		Class clazz = parent.getClass();
+		try {
+			java.lang.reflect.Field field = clazz.getDeclaredField(fieldName);
+			field.setAccessible(true);
+
+			Object fieldValue = field.get(parent);
+
+			result = cb.equal(root, cb.literal(fieldValue));
+			
 		} catch (NoSuchFieldException | SecurityException | IllegalArgumentException | IllegalAccessException ex) {
 				log.warn("Error attempting to process hibernate proxy");
 				log.debug("Error accessing field", ex);

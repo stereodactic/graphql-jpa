@@ -107,6 +107,12 @@ insert into character_appears_in (character_id, appears_in) values
 insert into thing (id, type) values
     ('2D1EBC5B7D2741979CF0E84451C5BBB1', 'Thing1');
 
+-- type Entities
+insert into type_entity(id, name, description) values
+	(1, 'alpha', 'alpha type'),
+	(2, 'beta', 'beta type'),
+	(3, 'gamma', 'gamma type');
+
 -- Collection Entities
 insert into collection_entity(id) values
 	(1),
@@ -120,7 +126,7 @@ insert into strings(owner_id, value) values
 	(3, 'odin'),
 	(3, 'dva');
 
-insert into objects(owner_id, color, shape) values
-	(1, 'red', 'square'),
-	(1, 'blue', 'circle'),
-	(2, 'yellow', 'oval');
+insert into objects(owner_id, color, shape, type_entity_id) values
+	(1, 'red', 'square', 1),
+	(1, 'blue', 'circle', 2),
+	(2, 'yellow', 'oval', 3);
