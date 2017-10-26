@@ -21,11 +21,15 @@ class EmbeddingId implements Serializable {
 
     @Column(name = "age")
     private int age;
+	
+	@Column(name = "weight")
+	private int weight;
 
-    public EmbeddingId(Character character, Episode episode, int age) {
+    public EmbeddingId(Character character, Episode episode, int age, int weight) {
         this.character = character;
         this.episode = episode;
         this.age = age;
+		this.weight = weight;
     }
 
     @Override
@@ -36,6 +40,7 @@ class EmbeddingId implements Serializable {
         EmbeddingId that = (EmbeddingId) o;
 
         if (age != that.age) return false;
+		if (weight != that.weight) return false;
         if (character != null ? !character.equals(that.character) : that.character != null) return false;
         return episode == that.episode;
     }
@@ -45,6 +50,7 @@ class EmbeddingId implements Serializable {
         int result = character != null ? character.hashCode() : 0;
         result = 31 * result + (episode != null ? episode.hashCode() : 0);
         result = 31 * result + age;
+        result = 31 * result + weight;
         return result;
     }
 }

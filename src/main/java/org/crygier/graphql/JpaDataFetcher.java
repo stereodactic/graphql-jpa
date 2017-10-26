@@ -352,9 +352,14 @@ public class JpaDataFetcher implements DataFetcher {
 
 				if (oneToOne != null && oneToOne.mappedBy() != null && !"".equals(oneToOne.mappedBy().trim())) { //TODO: use StringUtils instead?
 					result = cb.equal(root.get(oneToOne.mappedBy()), cb.literal(parent));
-				} else if (oneToMany != null) {
+				} else if (oneToMany != null) { 
 					String mappedBy = oneToMany.mappedBy();
-					result = cb.equal(root.get(mappedBy), cb.literal(parent));
+					if (mappedBy != null && !"".equals(mappedBy.trim())) { //TODO: use StringUtils instead?
+						result = cb.equal(root.get(mappedBy), cb.literal(parent));
+					} else {
+						Subquery subQuery = generateSubQuery(query, root, parent, cb, fieldName);
+						result = root.in(subQuery);
+					}
 				} else if (manyToMany != null) {
 
 					Subquery subQuery = generateSubQuery(query, root, parent, cb, fieldName);

@@ -106,24 +106,39 @@ public class GraphQLSchemaBuilder {
 
     
     private Stream<GraphQLArgument> getArgument(Attribute attribute) {
-        return getAttributeType(attribute)
-                .filter(type -> type instanceof GraphQLInputType)
-                .filter(type -> attribute.getPersistentAttributeType() != Attribute.PersistentAttributeType.EMBEDDED ||
-                        (attribute.getPersistentAttributeType() == Attribute.PersistentAttributeType.EMBEDDED && type instanceof GraphQLScalarType))
-                .map(type -> {
-                    String name;
-                    if (attribute.getPersistentAttributeType() == Attribute.PersistentAttributeType.EMBEDDED) {
-                        name = type.getName();
-                    } else {
-                        name = attribute.getName();
-                    }
+		
+		if (attribute.getPersistentAttributeType() == Attribute.PersistentAttributeType.EMBEDDED) {
+			EmbeddableType embeddableType = (EmbeddableType) ((SingularAttribute) attribute).getType();
+			Stream<Attribute> s = (Stream<Attribute>) embeddableType.getAttributes().stream();
+			return s.filter(a -> a.getPersistentAttributeType() != Attribute.PersistentAttributeType.EMBEDDED)
+					.filter(a -> getAttributeType(a) instanceof GraphQLScalarType).flatMap(this::getArgument);
+		} else {
+		
+			return Arrays.asList(getAttributeType(attribute)).stream()
+					.filter(type -> type instanceof GraphQLInputType)
+					.filter(type -> attribute.getPersistentAttributeType() != Attribute.PersistentAttributeType.EMBEDDED ||
+							(attribute.getPersistentAttributeType() == Attribute.PersistentAttributeType.EMBEDDED && type instanceof GraphQLScalarType))
+					.map(type -> {
+						String name;
+						if (attribute.getPersistentAttributeType() == Attribute.PersistentAttributeType.EMBEDDED) {
+							name = type.getName();
+						} else {
+							name = attribute.getName();
+						}
 
-                    return GraphQLArgument.newArgument()
-                            .name(name)
-                            //.type((GraphQLInputType) type)
-							.type((GraphQLInputType) new GraphQLList(type))
-                            .build();
-                });
+						/*
+						if (!(type instanceof GraphQLList)) {
+							type = new GraphQLList(type);
+						}
+						*/
+
+						return GraphQLArgument.newArgument()
+								.name(name)
+								//.type((GraphQLInputType) type)
+								.type((GraphQLInputType) new GraphQLList(type))
+								.build();
+					});
+		}
     }
 
     private GraphQLObjectType getObjectType(EntityType<?> entityType) {
@@ -194,107 +209,123 @@ public class GraphQLSchemaBuilder {
 	}
 	
     private Stream<GraphQLFieldDefinition> getObjectField(Attribute attribute) {
-		return getAttributeType(attribute)
-				.filter(type -> type instanceof GraphQLOutputType)
-				.map(type -> {
-					List<GraphQLArgument> arguments = new ArrayList<>();
-					arguments.add(GraphQLArgument.newArgument().name("orderBy").type(orderByDirectionEnum).build());            // Always add the orderBy argument
-					arguments.add(GraphQLArgument.newArgument().name("joinType").type(joinTypeEnum).build());            // Always add the joinType argument
 
-					// Get the fields that can be queried on (i.e. Simple Types, no Sub-Objects)
-					if (attribute instanceof SingularAttribute 
-							&& attribute.getPersistentAttributeType() != Attribute.PersistentAttributeType.BASIC 
-							&& attribute.getPersistentAttributeType() != Attribute.PersistentAttributeType.EMBEDDED) {
-						
-						EntityType foreignType = (EntityType) ((SingularAttribute) attribute).getType();
-						Stream<Attribute> attributes = findBasicAttributes(foreignType.getAttributes());
+		if (attribute.getPersistentAttributeType() == Attribute.PersistentAttributeType.EMBEDDED) {
+			EmbeddableType embeddableType = (EmbeddableType) ((SingularAttribute) attribute).getType();
+			Stream<Attribute> s = (Stream<Attribute>) embeddableType.getAttributes().stream();
+			return s.flatMap(this::getObjectField);
+		} else {
 
-						attributes.forEach(it -> {
-							arguments.addAll(getArgument(it).collect(Collectors.toList()));
-						});
+			return Arrays.asList(getAttributeType(attribute)).stream()
+					.filter(type -> type instanceof GraphQLOutputType)
+					.map(type -> {
 
-						//To do this, the id of the parent would have to be taken into account here so that it actually queries based upon the parent
-						//relationship.  This still retains the n+1 problem though
+						List<GraphQLArgument> arguments = new ArrayList<>();
+						arguments.add(GraphQLArgument.newArgument().name("orderBy").type(orderByDirectionEnum).build());            // Always add the orderBy argument
+						arguments.add(GraphQLArgument.newArgument().name("joinType").type(joinTypeEnum).build());            // Always add the joinType argument
+
+						// Get the fields that can be queried on (i.e. Simple Types, no Sub-Objects)
+						if (attribute instanceof SingularAttribute
+								&& attribute.getPersistentAttributeType() != Attribute.PersistentAttributeType.BASIC
+								&& attribute.getPersistentAttributeType() != Attribute.PersistentAttributeType.EMBEDDED) {
+
+							EntityType foreignType = (EntityType) ((SingularAttribute) attribute).getType();
+							Stream<Attribute> attributes = findBasicAttributes(foreignType.getAttributes());
+
+							attributes.forEach(it -> {
+								arguments.addAll(getArgument(it).collect(Collectors.toList()));
+							});
+
+							//To do this, the id of the parent would have to be taken into account here so that it actually queries based upon the parent
+							//relationship.  This still retains the n+1 problem though
+							return GraphQLFieldDefinition.newFieldDefinition()
+									.name(attribute.getName())
+									.description(getSchemaDocumentation(attribute.getJavaMember()))
+									.type((GraphQLOutputType) type)
+									.dataFetcher(new JpaDataFetcher(entityManager, foreignType))
+									.argument(arguments)
+									.build();
+
+						} else if (attribute instanceof PluralAttribute) {
+
+							//TODO: this is hacky, attempting to prevent "java.lang.ClassCastException: org.hibernate.jpa.internal.metamodel.BasicTypeImpl cannot be cast to javax.persistence.metamodel.EntityType"
+							if (((PluralAttribute) attribute).getElementType() instanceof EntityType) {
+								EntityType foreignType = (EntityType) ((PluralAttribute) attribute).getElementType();
+								Stream<Attribute> attributes = findBasicAttributes(foreignType.getAttributes());
+
+								attributes.forEach(it -> {
+									arguments.addAll(getArgument(it).collect(Collectors.toList()));
+								});
+
+								//To do this, the id of the parent would have to be taken into account here so that it actually queries based upon the parent
+								//relationship.  This still retains the n+1 problem though
+								return GraphQLFieldDefinition.newFieldDefinition()
+										.name(attribute.getName())
+										.description(getSchemaDocumentation(attribute.getJavaMember()))
+										.type((GraphQLOutputType) type)
+										.dataFetcher(new JpaDataFetcher(entityManager, foreignType))
+										.argument(arguments)
+										.build();
+
+							}
+							/* else if (((PluralAttribute) attribute).getElementType() instanceof EmbeddableType) {
+					EmbeddableType foreignType = (EmbeddableType) ((PluralAttribute) attribute).getElementType();
+					Stream<Attribute> attributes = findBasicAttributes(foreignType.getAttributes());
+
+					attributes.forEach(it -> {
+						arguments.addAll(getArgument(it).collect(Collectors.toList()));
+					});
+
+					//To do this, the id of the parent would have to be taken into account here so that it actually queries based upon the parent
+					//relationship.  This still retains the n+1 problem though
+					return GraphQLFieldDefinition.newFieldDefinition()
+							.name(attribute.getName())
+							.description(getSchemaDocumentation(attribute.getJavaMember()))
+							.type((GraphQLOutputType) type)
+							.dataFetcher(new JpaDataFetcher(entityManager, foreignType))
+							.argument(arguments)
+							.build();
+				} */
+
+						}
+
+						/*
+						String name;
+						if (attribute.getPersistentAttributeType() == Attribute.PersistentAttributeType.EMBEDDED && !(type instanceof GraphQLScalarType)) {
+							name = type.getName();
+						} else {
+							name = attribute.getName();
+						}
+						*/
+
 						return GraphQLFieldDefinition.newFieldDefinition()
 								.name(attribute.getName())
 								.description(getSchemaDocumentation(attribute.getJavaMember()))
 								.type((GraphQLOutputType) type)
-								.dataFetcher(new JpaDataFetcher(entityManager, foreignType))
 								.argument(arguments)
 								.build();
 
-					} else if (attribute instanceof PluralAttribute) {
-
-						//TODO: this is hacky, attempting to prevent "java.lang.ClassCastException: org.hibernate.jpa.internal.metamodel.BasicTypeImpl cannot be cast to javax.persistence.metamodel.EntityType"
-						if (((PluralAttribute) attribute).getElementType() instanceof EntityType) {
-							EntityType foreignType = (EntityType) ((PluralAttribute) attribute).getElementType();
-							Stream<Attribute> attributes = findBasicAttributes(foreignType.getAttributes());
-
-							attributes.forEach(it -> {
-								arguments.addAll(getArgument(it).collect(Collectors.toList()));
-							});
-
-							//To do this, the id of the parent would have to be taken into account here so that it actually queries based upon the parent
-							//relationship.  This still retains the n+1 problem though
-							return GraphQLFieldDefinition.newFieldDefinition()
-									.name(attribute.getName())
-									.description(getSchemaDocumentation(attribute.getJavaMember()))
-									.type((GraphQLOutputType) type)
-									.dataFetcher(new JpaDataFetcher(entityManager, foreignType))
-									.argument(arguments)
-									.build();
-
-						} /* else if (((PluralAttribute) attribute).getElementType() instanceof EmbeddableType) {
-							EmbeddableType foreignType = (EmbeddableType) ((PluralAttribute) attribute).getElementType();
-							Stream<Attribute> attributes = findBasicAttributes(foreignType.getAttributes());
-
-							attributes.forEach(it -> {
-								arguments.addAll(getArgument(it).collect(Collectors.toList()));
-							});
-
-							//To do this, the id of the parent would have to be taken into account here so that it actually queries based upon the parent
-							//relationship.  This still retains the n+1 problem though
-							return GraphQLFieldDefinition.newFieldDefinition()
-									.name(attribute.getName())
-									.description(getSchemaDocumentation(attribute.getJavaMember()))
-									.type((GraphQLOutputType) type)
-									.dataFetcher(new JpaDataFetcher(entityManager, foreignType))
-									.argument(arguments)
-									.build();
-						} */
-
-					}
-
-					String name;
-					if (attribute.getPersistentAttributeType() == Attribute.PersistentAttributeType.EMBEDDED) {
-						name = type.getName();
-					} else {
-						name = attribute.getName();
-					}
-
-					return GraphQLFieldDefinition.newFieldDefinition()
-							.name(name)
-							.description(getSchemaDocumentation(attribute.getJavaMember()))
-							.type((GraphQLOutputType) type)
-							.argument(arguments)
-							.build();
-				});
+					});
+		}
 	}
 
     private boolean isConnectorField(Attribute attribute) {
-        GraphQLType type = getAttributeType(attribute).findFirst().get();
 		
         boolean result = false;
 		
-		if (type instanceof GraphQLOutputType) {	
-			if (attribute instanceof SingularAttribute 
-					&& attribute.getPersistentAttributeType() != Attribute.PersistentAttributeType.BASIC
-					&& attribute.getPersistentAttributeType() != Attribute.PersistentAttributeType.EMBEDDED) {
-				result = true;
-			} else if (attribute instanceof PluralAttribute) {
-				//TODO: this is hacky, attempting to prevent "java.lang.ClassCastException: org.hibernate.jpa.internal.metamodel.BasicTypeImpl cannot be cast to javax.persistence.metamodel.EntityType"
-				if (((PluralAttribute) attribute).getElementType() instanceof EntityType) {
+		if (attribute.getPersistentAttributeType() != Attribute.PersistentAttributeType.EMBEDDED) {
+			GraphQLType type = getAttributeType(attribute);
+		
+			if (type instanceof GraphQLOutputType) {	
+				if (attribute instanceof SingularAttribute 
+						&& attribute.getPersistentAttributeType() != Attribute.PersistentAttributeType.BASIC
+						&& attribute.getPersistentAttributeType() != Attribute.PersistentAttributeType.EMBEDDED) {
 					result = true;
+				} else if (attribute instanceof PluralAttribute) {
+					//TODO: this is hacky, attempting to prevent "java.lang.ClassCastException: org.hibernate.jpa.internal.metamodel.BasicTypeImpl cannot be cast to javax.persistence.metamodel.EntityType"
+					if (((PluralAttribute) attribute).getElementType() instanceof EntityType) {
+						result = true;
+					}
 				}
 			}
 		}
@@ -374,28 +405,28 @@ public class GraphQLSchemaBuilder {
                 "Class could not be mapped to GraphQL: '" + javaType.getTypeName() + "'");
     }
 
-    private Stream<GraphQLType> getAttributeType(Attribute attribute) {
+    private GraphQLType getAttributeType(Attribute attribute) {
         if (attribute.getPersistentAttributeType() == Attribute.PersistentAttributeType.BASIC) {
             try {
-                return Stream.of(getBasicAttributeType(attribute.getJavaType()));
+                return getBasicAttributeType(attribute.getJavaType());
             } catch (UnsupportedOperationException e) {
                 //fall through to the exception below
                 //which is more useful because it also contains the declaring member
             }
         } else if (attribute.getPersistentAttributeType() == Attribute.PersistentAttributeType.ONE_TO_MANY || attribute.getPersistentAttributeType() == Attribute.PersistentAttributeType.MANY_TO_MANY) {
             EntityType foreignType = (EntityType) ((PluralAttribute) attribute).getElementType();
-            return Stream.of(new GraphQLList(new GraphQLTypeReference(foreignType.getName())));
+            return new GraphQLList(new GraphQLTypeReference(foreignType.getName()));
         } else if (attribute.getPersistentAttributeType() == Attribute.PersistentAttributeType.MANY_TO_ONE || attribute.getPersistentAttributeType() == Attribute.PersistentAttributeType.ONE_TO_ONE) {
             EntityType foreignType = (EntityType) ((SingularAttribute) attribute).getType();
-            return Stream.of(new GraphQLTypeReference(foreignType.getName()));
+            return new GraphQLTypeReference(foreignType.getName());
         } else if (attribute.getPersistentAttributeType() == Attribute.PersistentAttributeType.ELEMENT_COLLECTION) {
             Type foreignType = ((PluralAttribute) attribute).getElementType();
-            return Stream.of(new GraphQLList(getTypeFromJavaType(foreignType.getJavaType())));
-        } else if (attribute.getPersistentAttributeType() == Attribute.PersistentAttributeType.EMBEDDED) {
+            return new GraphQLList(getTypeFromJavaType(foreignType.getJavaType()));
+        }  /* else if (attribute.getPersistentAttributeType() == Attribute.PersistentAttributeType.EMBEDDED) {
             EmbeddableType embeddableType = (EmbeddableType) ((SingularAttribute) attribute).getType();
             Stream<Attribute> s = (Stream<Attribute>) embeddableType.getAttributes().stream();
             return s.flatMap(this::getAttributeType);
-        }
+        } */
 
         final String declaringType = attribute.getDeclaringType().getJavaType().getName(); // fully qualified name of the entity class
         final String declaringMember = attribute.getJavaMember().getName(); // field name in the entity class
