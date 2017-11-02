@@ -68,7 +68,7 @@ public class JpaDataFetcher implements DataFetcher {
 				if (resultList.size() == 1) {
 					result = resultList.get(0);
 				} else {
-					log.error("Error: unexpected number of results returned: " + resultList.size());
+					log.warn("Potentially unexpected number of results returned: " + resultList.size());
 				}
 			}
 			
@@ -407,22 +407,26 @@ public class JpaDataFetcher implements DataFetcher {
 
 			Object fieldValue = field.get(parent);
 
-			java.lang.reflect.Field handlerField = fieldValue.getClass().getDeclaredField("handler");
-			handlerField.setAccessible(true);
+			if (fieldValue != null) {
+				java.lang.reflect.Field handlerField = fieldValue.getClass().getDeclaredField("handler");
+				handlerField.setAccessible(true);
 
-			Object handler = handlerField.get(fieldValue);
+				Object handler = handlerField.get(fieldValue);
 
-			try {
-				if (Class.forName("org.hibernate.proxy.LazyInitializer").isAssignableFrom(handler.getClass())) {
-					Method getIdentifier = handler.getClass().getMethod("getIdentifier", (Class[]) null);
-					result = cb.equal(root, getIdentifier.invoke(handler, (Object[]) null));
+				try {
+					if (Class.forName("org.hibernate.proxy.LazyInitializer").isAssignableFrom(handler.getClass())) {
+						Method getIdentifier = handler.getClass().getMethod("getIdentifier", (Class[]) null);
+						result = cb.equal(root, getIdentifier.invoke(handler, (Object[]) null));
+					}
+				} catch (NoSuchMethodException | InvocationTargetException ex) {
+					log.warn("Error attempting to process hibernate proxy");
+					log.debug("Error invoking method", ex);
+				} catch (ClassNotFoundException ex) {
+					//This just means that we're not using hibernate
+					log.warn("Unable process hibernate proxy - Hibernate does not appear to be present");
 				}
-			} catch (NoSuchMethodException | InvocationTargetException ex) {
-				log.warn("Error attempting to process hibernate proxy");
-				log.debug("Error invoking method", ex);
-			} catch (ClassNotFoundException ex) {
-				//This just means that we're not using hibernate
-				log.warn("Unable process hibernate proxy - Hibernate does not appear to be present");
+			} else {
+				result = cb.isNull(root);
 			}
 
 		} catch (NoSuchFieldException | SecurityException | IllegalArgumentException | IllegalAccessException ex) {
@@ -437,8 +441,6 @@ public class JpaDataFetcher implements DataFetcher {
 		
 		Predicate result = null;
 		
-		//This implementation may be fragile if hibernate changes it's implementation.  However, the performance benefits
-		//of using the id is much better than using a subquery
 		Class clazz = parent.getClass();
 		try {
 			java.lang.reflect.Field field = clazz.getDeclaredField(fieldName);
@@ -449,7 +451,7 @@ public class JpaDataFetcher implements DataFetcher {
 			result = cb.equal(root, cb.literal(fieldValue));
 			
 		} catch (NoSuchFieldException | SecurityException | IllegalArgumentException | IllegalAccessException ex) {
-				log.warn("Error attempting to process hibernate proxy");
+				log.warn("Error attempting to get field value");
 				log.debug("Error accessing field", ex);
 		}
 		

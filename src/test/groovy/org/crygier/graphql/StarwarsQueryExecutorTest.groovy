@@ -422,6 +422,38 @@ class StarwarsQueryExecutorTest extends Specification {
         result == expected
     }
 
+    def 'Null ManyToOne does not throw exception'() {
+		
+		//if fetch is enabled, this test will force it by retrieving father
+        given:
+        def query = '''
+        {
+			Human {
+				name (orderBy: ASC)
+				father {
+					name
+				}
+			}
+        }
+        '''
+        def expected = [
+			Human:[
+				[name:'Darth Maul', father:null], 
+				[name:'Darth Vader', father:null], 
+				[name:'Han Solo', father:null], 
+				[name:'Leia Organa', father:[name:'Darth Vader']], 
+				[name:'Luke Skywalker', father:[name:'Darth Vader']], 
+				[name:'Wilhuff Tarkin', father:null]
+			]
+        ]
+
+        when:
+        def result = executor.execute(query).data
+
+        then:
+        result == expected
+    }
+
     def 'Pagination without content'() {
         given:
         def query = '''
