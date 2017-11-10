@@ -85,8 +85,9 @@ public class JpaDataFetcher implements DataFetcher {
         CriteriaQuery<Object> query = cb.createQuery((Class) entityType.getJavaType());
 		
 		buildCriteriaQuery(environment, field, cb, query, true);
+		//query.distinct(true);
 		
-        return entityManager.createQuery(query.distinct(true));
+        return entityManager.createQuery(query);
     }
 
     protected Root buildCriteriaQuery(DataFetchingEnvironment environment, Field field, CriteriaBuilder cb, CriteriaQuery<Object> query, boolean isFullQuery) {
@@ -196,6 +197,12 @@ public class JpaDataFetcher implements DataFetcher {
 						}
 
 						if (join != null) {
+							/* If we have a join, assume we need to distinct the query
+							 * TODO: Realistically, we should only need to do this then the join is a ToMany join, because 
+							 * that will be responsible for expanding the result set.
+							 */
+							query.distinct(true);
+							
 							final Join forLambda = (Join) join;
 
 							getQueryHelper(environment, selectedField, cb, query, ((From)forLambda), ((Join) forLambda), fetched);
