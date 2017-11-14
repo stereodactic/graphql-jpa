@@ -15,6 +15,7 @@ import javax.persistence.metamodel.PluralAttribute;
 import javax.persistence.metamodel.SingularAttribute;
 import java.util.*;
 import java.util.stream.Collectors;
+import javax.persistence.Cacheable;
 import javax.persistence.Embeddable;
 import javax.persistence.Entity;
 import javax.persistence.ManyToMany;
@@ -43,6 +44,12 @@ public class JpaDataFetcher implements DataFetcher {
 		Field field = environment.getFields().iterator().next();
 		
 		TypedQuery typedQuery = getQuery(environment, field);
+		
+		//if this is an entity that we specifically marked for caching, let's cache it
+		if (entityType.getBindableJavaType().getAnnotation(Cacheable.class) != null) {
+			//TODO: it would be nice for this not to be hibernate specific
+			typedQuery.setHint("org.hibernate.cacheable", Boolean.TRUE);
+		}
 		
 		if (environment.getSource() instanceof PaginationResult) {
 			PaginationResult paginationResult = (PaginationResult) environment.getSource();
