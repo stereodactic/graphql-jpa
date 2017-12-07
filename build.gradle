@@ -1,3 +1,7 @@
+plugins {
+  id 'org.ajoberstar.grgit' version '2.1.0'
+}
+
 apply plugin: 'groovy'
 apply plugin: 'eclipse'
 apply plugin: 'idea'
@@ -7,10 +11,20 @@ apply plugin: 'maven-publish'
 group = 'com.crygier'
 version = 'SNAPSHOT'
 
+def repo = org.ajoberstar.grgit.Grgit.open()
+
 jar {
+	
     baseName = 'graphql-jpa'
     version = project.version
+    manifest {
+        attributes 'Implementation-Revision': repo.head().getAbbreviatedId(8),
+                   'Implementation-Branch': repo.branch.getCurrent().getName(),
+                   'Implementation-Remote-URL': repo.remote.list().first().url,
+				   'Built-By': System.properties['user.name']
+    }
 }
+
 sourceCompatibility = 1.8
 targetCompatibility = 1.8
 
