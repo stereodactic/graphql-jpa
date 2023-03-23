@@ -2,9 +2,11 @@ package org.crygier.graphql;
 
 import graphql.language.*;
 import graphql.schema.*;
+import graphql.GraphQLContext;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Member;
 import java.lang.reflect.Method;
+import java.math.BigInteger;
 
 import javax.persistence.EntityManager;
 import javax.persistence.TypedQuery;
@@ -22,6 +24,8 @@ import javax.persistence.ManyToMany;
 import javax.persistence.ManyToOne;
 import javax.persistence.OneToMany;
 import javax.persistence.OneToOne;
+import javax.servlet.http.HttpServletRequest;
+import org.crygier.graphql.annotation.SecurityId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -69,7 +73,7 @@ public class JpaDataFetcher implements DataFetcher {
 			
 			java.lang.reflect.Field property = (java.lang.reflect.Field) member;
 
-			if (Collection.class.isAssignableFrom(property.getType())) {
+			if (property == null || Collection.class.isAssignableFrom(property.getType())) {
 				result = resultList;
 			} else {
 				if (resultList.size() == 1) {
@@ -78,7 +82,6 @@ public class JpaDataFetcher implements DataFetcher {
 					log.warn("Potentially unexpected number of results returned: " + resultList.size());
 				}
 			}
-			
 		} else {
 			result = typedQuery.getResultList();
 		}
@@ -116,6 +119,21 @@ public class JpaDataFetcher implements DataFetcher {
 				.filter(it -> (!"orderBy".equals(it.getName()) && !"joinType".equals(it.getName())))
 				.map(it -> getPredicate(cb, getRootArgumentPath(root, it), environment, it))
 				.collect(Collectors.toList()));
+
+		boolean isSecured = false;
+		for (java.lang.reflect.Field rootField : root.getJavaType().getDeclaredFields()) {
+			if (rootField.getDeclaredAnnotation(SecurityId.class) != null) {
+				isSecured = true;
+				break;
+			}
+		}
+		if (isSecured) { //if this object is secured, apply security to it
+			GraphQLContext graphQLContext = environment.getGraphQlContext();
+			HttpServletRequest req = graphQLContext.get(HttpServletRequest.class);
+			Long securityId = (Long) req.getAttribute("securityId");
+			Argument security = new Argument("securityId", new IntValue(BigInteger.valueOf(securityId)));
+			predicates.add(getPredicate(cb, getRootArgumentPath(root, security), environment, security));
+		}
 
 		//if there is a source, this is a nested query, we need to apply the filtering from the parent
 		//we check to ensure that this isn't a count query because the parent is not an entity in that case
@@ -303,7 +321,7 @@ public class JpaDataFetcher implements DataFetcher {
     }
 
     private Attribute getAttribute(DataFetchingEnvironment environment, Argument argument) {
-        GraphQLObjectType objectType = getObjectType(environment, argument);
+        GraphQLObjectType objectType = getObjectType(environment);
         EntityType entityType = getEntityType(objectType);
 
         return entityType.getAttribute(argument.getName());
@@ -313,7 +331,7 @@ public class JpaDataFetcher implements DataFetcher {
         return entityManager.getMetamodel().getEntities().stream().filter(it -> it.getName().equals(objectType.getName())).findFirst().get();
     }
 
-    private GraphQLObjectType getObjectType(DataFetchingEnvironment environment, Argument argument) {
+    private GraphQLObjectType getObjectType(DataFetchingEnvironment environment) {
         GraphQLType outputType = environment.getFieldType();
         if (outputType instanceof GraphQLList)
             outputType = ((GraphQLList) outputType).getWrappedType();
@@ -422,7 +440,7 @@ public class JpaDataFetcher implements DataFetcher {
 			Object fieldValue = field.get(parent);
 
 			if (fieldValue != null) {
-				java.lang.reflect.Field handlerField = fieldValue.getClass().getDeclaredField("handler");
+				java.lang.reflect.Field handlerField = fieldValue.getClass().getDeclaredField("$$_hibernate_interceptor");
 				handlerField.setAccessible(true);
 
 				Object handler = handlerField.get(fieldValue);

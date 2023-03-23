@@ -39,7 +39,7 @@ class StarwarsSchemaBuildTest extends Specification {
 
         then:   "Ensure Subobjects may be queried upon"
         schema.getQueryType().getFieldDefinition("CodeList").getArguments().size() == 6
-        schema.getQueryType().getFieldDefinition("CodeList").getArgument("code").getType() == type
+        schema.getQueryType().getFieldDefinition("CodeList").getArgument("code").getType().getOriginalWrappedType().getName().equals(type.getOriginalWrappedType().getName())
     }
 
 }

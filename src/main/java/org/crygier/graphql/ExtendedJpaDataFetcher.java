@@ -37,7 +37,7 @@ public class ExtendedJpaDataFetcher extends JpaDataFetcher {
             final Long totalElements = contentSelection
                     .map(contentField -> getCountQuery(environment, contentField).getSingleResult())
                     // if no "content" was selected an empty Field can be used
-                    .orElseGet(() -> getCountQuery(environment, new Field()).getSingleResult());
+                    .orElseGet(() -> getCountQuery(environment, Field.newField().build()).getSingleResult());
 
 			paginationResult = new PaginationResult(totalElements, 
 					((Double) Math.ceil(totalElements / (double) pageInformation.size)).longValue(), 
@@ -67,7 +67,6 @@ public class ExtendedJpaDataFetcher extends JpaDataFetcher {
     private PageInformation extractPageInformation(DataFetchingEnvironment environment, Field field) {
         Optional<Argument> paginationRequest = field.getArguments().stream().filter(it -> GraphQLSchemaBuilder.PAGINATION_REQUEST_PARAM_NAME.equals(it.getName())).findFirst();
         if (paginationRequest.isPresent()) {
-            field.getArguments().remove(paginationRequest.get());
 
             ObjectValue paginationValues = (ObjectValue) paginationRequest.get().getValue();
             IntValue page = (IntValue) paginationValues.getObjectFields().stream().filter(it -> "page".equals(it.getName())).findFirst().get().getValue();

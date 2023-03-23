@@ -84,8 +84,8 @@ class CollectionTest extends Specification {
         '''
         def expected = [
 			CollectionEntity: [
-			   [ id: '1', objects: [ [typeEntity: [id: '1', name: 'alpha', description: 'alpha type']] , [typeEntity: [id: '2', name: 'beta', description: 'beta type' ] ] ] ],
-			   [ id: '2', objects: [ [typeEntity: [id: '3', name: 'gamma', description: 'gamma type']] ] ],
+			   [ id: '1', objects: [ [typeEntity: [id: 1, name: 'alpha', description: 'alpha type']] , [typeEntity: [id: 2, name: 'beta', description: 'beta type' ] ] ] ],
+			   [ id: '2', objects: [ [typeEntity: [id: 3, name: 'gamma', description: 'gamma type']] ] ],
 			   [ id: '3', objects: [] ]
 			]
         ]

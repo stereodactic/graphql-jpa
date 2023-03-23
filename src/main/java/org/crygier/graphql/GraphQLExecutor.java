@@ -3,12 +3,20 @@ package org.crygier.graphql;
 import graphql.ExecutionInput;
 import graphql.ExecutionResult;
 import graphql.GraphQL;
+import graphql.schema.GraphQLEnumType;
 
 import javax.annotation.PostConstruct;
 import javax.annotation.Resource;
 import javax.persistence.EntityManager;
 import javax.transaction.Transactional;
 import java.util.Map;
+
+import net.bytebuddy.ByteBuddy;
+import net.bytebuddy.agent.ByteBuddyAgent;
+import net.bytebuddy.agent.builder.AgentBuilder;
+import net.bytebuddy.dynamic.loading.ClassReloadingStrategy;
+import net.bytebuddy.implementation.MethodDelegation;
+import net.bytebuddy.matcher.ElementMatchers;
 
 public class GraphQLExecutor {
 
@@ -24,6 +32,21 @@ public class GraphQLExecutor {
 
     @PostConstruct
     protected void createGraphQL() {
+        // Since JPA will deserialize our Enum's for us, we don't want GraphQL doing it.
+        // To achieve this, we will delegate calls from GraphQLEnumType's 'serialize' method to
+        // our own method (which effectively does nothing).
+        ByteBuddyAgent.install();
+        new ByteBuddy()
+            .redefine(GraphQLEnumType.class)
+            .method(ElementMatchers.named("serialize"))
+            .intercept(MethodDelegation.to(IdentityCoercing.class))
+            .method(ElementMatchers.named("parseLiteral"))
+            .intercept(MethodDelegation.to(IdentityCoercing.class))
+            .make()
+            .load(
+                GraphQLEnumType.class.getClassLoader(),
+                ClassReloadingStrategy.fromInstalledAgent());
+
         if (entityManager != null)
             this.graphQL = GraphQL.newGraphQL(new GraphQLSchemaBuilder(entityManager).getGraphQLSchema()).build();
     }

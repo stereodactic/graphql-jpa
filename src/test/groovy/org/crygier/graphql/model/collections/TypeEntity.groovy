@@ -18,7 +18,7 @@ public class TypeEntity {
 
     @Id
     @SchemaDocumentation("Primary Key for the TypeEntity Class")
-    String id;
+    Integer id;
 
     @Column(name = "NAME")
     String name;
