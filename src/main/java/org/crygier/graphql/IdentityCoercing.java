@@ -2,20 +2,9 @@ package org.crygier.graphql;
 
 import graphql.schema.Coercing;
 
-public class IdentityCoercing implements Coercing{
+public class IdentityCoercing {
 
-    @Override
-    public Object serialize(Object input) {
-        return input;
-    }
-
-    @Override
-    public Object parseValue(Object input) {
-        return input;
-    }
-
-    @Override
-    public Object parseLiteral(Object input) {
+    public static Object serialize(Object input) {
         return input;
     }
 
