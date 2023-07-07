@@ -7,7 +7,7 @@ plugins {
     id 'org.ajoberstar.grgit' version '2.2.1'
 }
 
-version = 'v18.3-SNAPSHOT'
+version = 'v18.6-SNAPSHOT'
 
 java {
     sourceCompatibility = 1.8
@@ -40,7 +40,7 @@ configurations {
 }
 
 dependencies {
-    implementation 'com.graphql-java:graphql-java:18.3'
+    implementation 'com.graphql-java:graphql-java:18.6'
     implementation 'com.graphql-java:graphql-java-extended-scalars:18.3'
     implementation 'javax.transaction:javax.transaction-api:1.2'
     implementation 'net.bytebuddy:byte-buddy:1.12.22'
