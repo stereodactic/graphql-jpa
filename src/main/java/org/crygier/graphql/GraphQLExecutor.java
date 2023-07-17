@@ -3,6 +3,7 @@ package org.crygier.graphql;
 import graphql.ExecutionInput;
 import graphql.ExecutionResult;
 import graphql.GraphQL;
+import graphql.GraphQLContext;
 import graphql.schema.GraphQLEnumType;
 
 import javax.annotation.PostConstruct;
@@ -13,7 +14,6 @@ import java.util.Map;
 
 import net.bytebuddy.ByteBuddy;
 import net.bytebuddy.agent.ByteBuddyAgent;
-import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.dynamic.loading.ClassReloadingStrategy;
 import net.bytebuddy.implementation.MethodDelegation;
 import net.bytebuddy.matcher.ElementMatchers;
@@ -49,6 +49,11 @@ public class GraphQLExecutor {
 
         if (entityManager != null)
             this.graphQL = GraphQL.newGraphQL(new GraphQLSchemaBuilder(entityManager).getGraphQLSchema()).build();
+    }
+
+    @Transactional
+    public ExecutionResult execute(ExecutionInput executionInput) {
+        return graphQL.execute(executionInput);
     }
 
     @Transactional

@@ -130,3 +130,24 @@ insert into objects(owner_id, color, shape, type_entity_id) values
 	(1, 'red', 'square', 1),
 	(1, 'blue', 'circle', 2),
 	(2, 'yellow', 'oval', 3);
+
+-- Secured Entities
+insert into test_one_secured_parent_entity(id, name, security_id) values
+    (1, 'Tom', 1),
+    (2, 'Dick', 1),
+    (3, 'Harry', 2);
+
+insert into test_one_secured_child_entity(id, name, parent_id, security_id) values
+     (1, 'John', 3, 2),
+     (2, 'Jane', 3, 2),
+     (3, 'Sally', 3, 3); -- shouldn't match
+
+insert into test_two_insecure_parent_entity(id, name) values
+    (1, 'Tom'),
+    (2, 'Dick'),
+    (3, 'Harry');
+
+insert into test_two_secured_child_entity(id, name, parent_id, security_id) values
+     (1, 'John', 3, 2),
+     (2, 'Jane', 3, 2),
+     (3, 'Sally', 3, 3); -- shouldn't match

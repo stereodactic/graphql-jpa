@@ -24,7 +24,6 @@ import javax.persistence.ManyToMany;
 import javax.persistence.ManyToOne;
 import javax.persistence.OneToMany;
 import javax.persistence.OneToOne;
-import javax.servlet.http.HttpServletRequest;
 import org.crygier.graphql.annotation.SecurityId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -121,17 +120,24 @@ public class JpaDataFetcher implements DataFetcher {
 				.collect(Collectors.toList()));
 
 		boolean isSecured = false;
+		String securedField = null;
+
 		for (java.lang.reflect.Field rootField : root.getJavaType().getDeclaredFields()) {
 			if (rootField.getDeclaredAnnotation(SecurityId.class) != null) {
 				isSecured = true;
+				securedField = rootField.getName();
 				break;
 			}
 		}
 		if (isSecured) { //if this object is secured, apply security to it
 			GraphQLContext graphQLContext = environment.getGraphQlContext();
-			HttpServletRequest req = graphQLContext.get(HttpServletRequest.class);
-			Long securityId = (Long) req.getAttribute("securityId");
-			Argument security = new Argument("securityId", new IntValue(BigInteger.valueOf(securityId)));
+			Long securityId = (Long) graphQLContext.get("securityId");
+
+			if (securityId == null) {
+				throw new RuntimeException(root.getJavaType().getName() + " is secured via field:" + securedField + ", but no security id is present!");
+			}
+
+			Argument security = new Argument(securedField, new IntValue(BigInteger.valueOf(securityId)));
 			predicates.add(getPredicate(cb, getRootArgumentPath(root, security), environment, security));
 		}
 
