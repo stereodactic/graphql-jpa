@@ -9,22 +9,18 @@ import org.crygier.graphql.annotation.SchemaDocumentation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.persistence.EntityManager;
-import javax.persistence.metamodel.*;
-import java.lang.reflect.Proxy;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.metamodel.*;
 import java.lang.reflect.AnnotatedElement;
-import java.lang.reflect.Field;
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Member;
-import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import javax.persistence.Embeddable;
-import javax.persistence.criteria.JoinType;
+import jakarta.persistence.Embeddable;
+import jakarta.persistence.criteria.JoinType;
 
 public class GraphQLSchemaBuilder {
 

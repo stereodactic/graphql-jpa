@@ -3,7 +3,7 @@ package org.crygier.graphql.model.starwars
 import groovy.transform.CompileStatic
 import org.crygier.graphql.annotation.SchemaDocumentation
 
-import javax.persistence.*
+import jakarta.persistence.*
 
 @Entity
 @SchemaDocumentation("Abstract representation of an entity in the Star Wars Universe")

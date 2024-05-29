@@ -3,9 +3,9 @@ package org.crygier.graphql.model.security
 import groovy.transform.CompileStatic;
 import org.crygier.graphql.annotation.SchemaDocumentation;
 
-import javax.persistence.Entity
-import javax.persistence.Id
-import javax.persistence.OneToMany;
+import jakarta.persistence.Entity
+import jakarta.persistence.Id
+import jakarta.persistence.OneToMany;
 
 @Entity
 @SchemaDocumentation("Representation of a secured object")

@@ -8,22 +8,22 @@ import java.lang.reflect.Member;
 import java.lang.reflect.Method;
 import java.math.BigInteger;
 
-import javax.persistence.EntityManager;
-import javax.persistence.TypedQuery;
-import javax.persistence.criteria.*;
-import javax.persistence.metamodel.Attribute;
-import javax.persistence.metamodel.EntityType;
-import javax.persistence.metamodel.PluralAttribute;
-import javax.persistence.metamodel.SingularAttribute;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.TypedQuery;
+import jakarta.persistence.criteria.*;
+import jakarta.persistence.metamodel.Attribute;
+import jakarta.persistence.metamodel.EntityType;
+import jakarta.persistence.metamodel.PluralAttribute;
+import jakarta.persistence.metamodel.SingularAttribute;
 import java.util.*;
 import java.util.stream.Collectors;
-import javax.persistence.Cacheable;
-import javax.persistence.Embeddable;
-import javax.persistence.Entity;
-import javax.persistence.ManyToMany;
-import javax.persistence.ManyToOne;
-import javax.persistence.OneToMany;
-import javax.persistence.OneToOne;
+import jakarta.persistence.Cacheable;
+import jakarta.persistence.Embeddable;
+import jakarta.persistence.Entity;
+import jakarta.persistence.ManyToMany;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OneToOne;
 import org.crygier.graphql.annotation.SecurityId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,7 +44,7 @@ public class JpaDataFetcher implements DataFetcher {
     public Object get(DataFetchingEnvironment environment) {
 		
 		Object result = null;
-		Field field = environment.getFields().iterator().next();
+		Field field = environment.getMergedField().getFields().iterator().next();
 		
 		TypedQuery typedQuery = getQuery(environment, field);
 		
@@ -362,7 +362,7 @@ public class JpaDataFetcher implements DataFetcher {
 			}
 		} else {
 			parent = environment.getSource();
-			fieldName = environment.getFields().get(0).getName();
+			fieldName = environment.getMergedField().getFields().get(0).getName();
 			if (fieldName.contains("Connection")) {
 				fieldName = fieldName.substring(0, fieldName.indexOf("Connection"));
 			}

@@ -1,15 +1,9 @@
 
 package org.crygier.graphql
 
-import org.crygier.graphql.model.starwars.Episode
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.context.annotation.Configuration
-import org.springframework.test.context.ContextConfiguration
-import org.springframework.transaction.annotation.Transactional
 import spock.lang.Specification
-
-import javax.persistence.EntityManager
 
 //@Configuration
 @SpringBootTest(classes = TestApplication)

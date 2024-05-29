@@ -1,15 +1,12 @@
 package org.crygier.graphql
 
-import graphql.schema.GraphQLObjectType
+
+import jakarta.persistence.EntityManager
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootContextLoader
 import org.springframework.context.annotation.Configuration
 import org.springframework.test.context.ContextConfiguration
 import spock.lang.Specification
-
-import javax.persistence.EntityManager
-import javax.persistence.metamodel.EntityType
-import java.util.stream.Collectors
 
 @Configuration
 @ContextConfiguration(loader = SpringBootContextLoader, classes = TestApplication)

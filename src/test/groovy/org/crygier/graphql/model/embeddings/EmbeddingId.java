@@ -3,10 +3,10 @@ package org.crygier.graphql.model.embeddings;
 import org.crygier.graphql.model.starwars.Character;
 import org.crygier.graphql.model.starwars.Episode;
 
-import javax.persistence.Column;
-import javax.persistence.Embeddable;
-import javax.persistence.JoinColumn;
-import javax.persistence.ManyToOne;
+import jakarta.persistence.Column;
+import jakarta.persistence.Embeddable;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import java.io.Serializable;
 
 @Embeddable

@@ -6,10 +6,10 @@ import graphql.GraphQL;
 import graphql.GraphQLContext;
 import graphql.schema.GraphQLEnumType;
 
-import javax.annotation.PostConstruct;
-import javax.annotation.Resource;
-import javax.persistence.EntityManager;
-import javax.transaction.Transactional;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.Resource;
+import jakarta.persistence.EntityManager;
+import jakarta.transaction.Transactional;
 import java.util.Map;
 
 import net.bytebuddy.ByteBuddy;

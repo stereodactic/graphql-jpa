@@ -2,8 +2,8 @@ package org.crygier.graphql.model.embeddings;
 
 import groovy.transform.CompileStatic;
 
-import javax.persistence.EmbeddedId;
-import javax.persistence.Entity;
+import jakarta.persistence.EmbeddedId;
+import jakarta.persistence.Entity;
 
 @Entity
 @CompileStatic
