@@ -248,7 +248,9 @@ public class JpaDataFetcher implements DataFetcher {
 							}
 
 							//add the predicates to the on to faciliate outer joins
-							forLambda.on(joinPredicates.toArray(EMPTY_PREDICATES));
+							if (!joinPredicates.isEmpty()) {
+								forLambda.on(joinPredicates.toArray(EMPTY_PREDICATES));
+							}
 						}
 					}
 				}
@@ -454,7 +456,7 @@ public class JpaDataFetcher implements DataFetcher {
 				try {
 					if (Class.forName("org.hibernate.proxy.LazyInitializer").isAssignableFrom(handler.getClass())) {
 						Method getIdentifier = handler.getClass().getMethod("getIdentifier", (Class[]) null);
-						result = cb.equal(root, getIdentifier.invoke(handler, (Object[]) null));
+						result = cb.equal(root.get("id"), getIdentifier.invoke(handler, (Object[]) null));
 					}
 				} catch (NoSuchMethodException | InvocationTargetException ex) {
 					log.warn("Error attempting to process hibernate proxy");

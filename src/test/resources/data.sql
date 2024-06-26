@@ -119,7 +119,7 @@ insert into collection_entity(id) values
 	(2),
 	(3);
 
-insert into strings(owner_id, value) values
+insert into strings(owner_id, val) values
 	(1, 'uno'),
 	(1, 'dos'),
 	(1, 'tres'),

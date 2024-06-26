@@ -29,7 +29,7 @@ public class CollectionEntity {
 		  name="STRINGS",
 		  joinColumns=@JoinColumn(name="OWNER_ID")
 	)
-	@Column(name="VALUE")
+	@Column(name="VAL")
     List<String> strings = new ArrayList<String>();
 	
 	@SchemaDocumentation("A List of Objects")
@@ -38,7 +38,7 @@ public class CollectionEntity {
 		  name="OBJECTS",
 		  joinColumns=@JoinColumn(name="OWNER_ID")
 	)
-	@Column(name="VALUE")
+	@Column(name="VAL")
 	List<EmbeddedObject> objects = new ArrayList<EmbeddedObject>();
 }
 

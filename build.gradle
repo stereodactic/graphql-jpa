@@ -57,8 +57,8 @@ configurations {
 }
 
 dependencies {
-    implementation 'com.graphql-java:graphql-java:22.0'
-    implementation 'com.graphql-java:graphql-java-extended-scalars:22.0'
+    implementation 'com.graphql-java:graphql-java:21.5'
+    implementation 'com.graphql-java:graphql-java-extended-scalars:21.0'
     implementation 'jakarta.transaction:jakarta.transaction-api:2.0.1'
     implementation 'net.bytebuddy:byte-buddy:1.14.14'
     implementation 'net.bytebuddy:byte-buddy-agent:1.14.14'
@@ -70,14 +70,21 @@ dependencies {
     testImplementation "org.springframework.boot:spring-boot-starter-test:3.2.5"
     testImplementation "org.springframework.boot:spring-boot-starter-data-jpa:3.2.5"
     testImplementation "org.springframework.boot:spring-boot-starter-web:3.2.5"
-    testImplementation 'junit:junit:4.13.2'
-    testImplementation 'org.spockframework:spock-core:2.3-groovy-4.0'
-    testImplementation 'org.spockframework:spock-spring:2.3-groovy-4.0'
+    testImplementation 'org.spockframework:spock-core:2.4-M4-groovy-4.0'
+    testImplementation 'org.spockframework:spock-spring:2.4-M4-groovy-4.0'
     testImplementation 'org.apache.groovy:groovy-all:4.0.21'
     testImplementation 'cglib:cglib-nodep:3.3.0'
     testImplementation 'org.objenesis:objenesis:3.3'
 
-    testRuntimeOnly "com.h2database:h2:1.4.190"
+    testRuntimeOnly "com.h2database:h2:2.2.224"
+}
+
+test {
+    useJUnitPlatform()
+
+    testLogging {
+        events "started", "passed", "skipped", "failed"
+    }
 }
 
 publishing {
